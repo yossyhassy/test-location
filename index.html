@@ -2,113 +2,70 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>現在地共有マップ（閲覧用）</title>
-
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; }
         #map { height: 100vh; width: 100%; }
-        /* 右上のステータス表示 */
-        #status {
-            position: fixed; top: 10px; right: 10px; z-index: 1000;
-            background: rgba(255, 255, 255, 0.8); padding: 5px 10px;
-            border-radius: 5px; font-size: 12px; font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
+        /* 名前ラベル（常に表示）のスタイル */
+        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
-
-    <div id="status">受信中...</div>
     <div id="map"></div>
 
     <script>
-    // --- Firebaseの設定（管理者用と同じ設定を貼り付けてください） ---
-    const firebaseConfig = {
-        apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
-        authDomain: "my-location-app-6812a.firebaseapp.com",
-        projectId: "my-location-app-6812a",
-        storageBucket: "my-location-app-6812a.firebasestorage.app",
-        messagingSenderId: "123347808605",
-        appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
-    };
-
+    const firebaseConfig = { /* admin.htmlと同じ設定をここに */ };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 地図の初期化
     const map = L.map('map').setView([35.6895, 139.6917], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {};
     const userPaths = {}; 
     const pathLayers = {};
 
-    // --- 30秒以上前の古い足跡を消去するタイマー ---
+    // 足跡消去（30秒）
     setInterval(() => {
         const now = Date.now();
         for (let id in userPaths) {
-            // 30秒以上前のデータを削除
             userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
-            
             if (pathLayers[id]) {
                 const latlngs = userPaths[id].map(p => p.pos);
                 pathLayers[id].setLatLngs(latlngs);
-                // 座標が足りなくなったら線を消す
-                if (latlngs.length < 2) {
-                    map.removeLayer(pathLayers[id]);
-                }
+                if (latlngs.length < 2) map.removeLayer(pathLayers[id]);
             }
         }
     }, 3000);
 
-    // Firebaseの監視（管理者からのデータを取得）
-    db.collection("locations").onSnapshot((snapshot) => {
-        document.getElementById('status').innerText = "データ更新済み";
-        
-        snapshot.docChanges().forEach((change) => {
+    db.collection("locations").onSnapshot(snapshot => {
+        snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
-
-            // 名前がないユーザー（管理者以外など）は表示しない
-            if (!data || !data.name || data.name.trim() === "") {
-                if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
-                if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
-                return; 
-            }
+            if (!data || !data.name) return;
 
             const pos = [data.lat, data.lng];
-
             if (change.type === "added" || change.type === "modified") {
-                // 足跡データの蓄積
+                // 足跡
                 if (!userPaths[id]) userPaths[id] = [];
                 userPaths[id].push({ pos: pos, time: Date.now() });
                 
-                const latlngs = userPaths[id].map(p => p.pos);
-
-                // 足跡の線を描画（細め：weight 1.5）
                 if (pathLayers[id]) {
-                    pathLayers[id].setLatLngs(latlngs);
-                    if (latlngs.length >= 2) pathLayers[id].addTo(map);
+                    pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
                 } else {
-                    pathLayers[id] = L.polyline(latlngs, {color: 'red', weight: 1.5, opacity: 0.7});
-                    if (latlngs.length >= 2) pathLayers[id].addTo(map);
+                    pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
                 }
-
-                // マーカーの描画
+                
+                // マーカー（名前を常に表示）
                 if (markers[id]) {
-                    markers[id].setLatLng(pos).getPopup().setContent(data.name);
+                    markers[id].setLatLng(pos).getTooltip().setContent(data.name);
                 } else {
-                    markers[id] = L.marker(pos).addTo(map).bindPopup(data.name);
-                    // 最初に見つけた管理者の位置に地図を移動
-                    map.panTo(pos);
+                    markers[id] = L.marker(pos).addTo(map)
+                        .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
                 }
             }
         });
