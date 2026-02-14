@@ -1,98 +1,75 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理者 - 25秒自動停止版</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
-        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #333; display: flex; justify-content: center; align-items: center; z-index: 2000; }
-        .login-card { background: white; padding: 30px; border-radius: 10px; text-align: center; }
-        input { padding: 12px; width: 220px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ddd; font-size: 16px; }
-        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-        #map { height: 100vh; width: 100%; display: none; }
-        #controls { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
-        .admin-label { background: white; border: 2px solid #28a745; border-radius: 5px; padding: 2px 8px; font-weight: bold; white-space: nowrap; }
-        #alert-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(220, 53, 69, 0.9); color: white; padding: 20px; border-radius: 10px; display: none; z-index: 3000; text-align: center; }
-    </style>
-</head>
-<body>
-    <div id="login-container"><div class="login-card"><h2>管理者用 配信開始</h2><input type="text" id="admin-name" placeholder="名前を入力"><br><button onclick="startAdmin()">配信を開始する</button></div></div>
-    <div id="alert-msg">⚠️ 通信が25秒以上途切れたため<br>自動停止します...</div>
-    <div id="controls"><button onclick="stopAdmin(true)" style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">配信を終了してデータを消す</button></div>
-    <div id="map"></div>
+<div id="login-container">
+    <div class="login-card">
+        <h2>管理者用 配信開始</h2>
+        <input type="text" id="admin-name" placeholder="名前を入力">
+        <input type="url" id="admin-icon" placeholder="アイコン画像のURL">
+        <br>
+        <button onclick="startAdmin()">配信を開始する</button>
+    </div>
+</div>
 
-    <script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
-        authDomain: "my-location-app-6812a.firebaseapp.com",
-        projectId: "my-location-app-6812a",
-        storageBucket: "my-location-app-6812a.firebasestorage.app",
-        messagingSenderId: "123347808605",
-        appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+<script>
+// ...中略...
+let myIconUrl = "";
 
-    let myName = "";
-    const myId = "admin_" + Math.random().toString(36).substring(2, 9);
-    let map, myMarker, updateInterval, watchdogTimer;
-    let lastSuccessTime = Date.now();
+function startAdmin() {
+    myName = document.getElementById('admin-name').value.trim();
+    myIconUrl = document.getElementById('admin-icon').value.trim(); // URLを取得
+    if (!myName) return alert("名前を入力してください");
+    
+    // アイコンが空の場合はデフォルト画像にする
+    if (!myIconUrl) myIconUrl = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
 
-    function startAdmin() {
-        myName = document.getElementById('admin-name').value.trim();
-        if (!myName) return alert("名前を入力してください");
-        document.getElementById('login-container').style.display = 'none';
-        document.getElementById('map').style.display = 'block';
-        document.getElementById('controls').style.display = 'block';
-        initMap();
-        startWatchdog();
-    }
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('map').style.display = 'block';
+    document.getElementById('controls').style.display = 'block';
+    initMap();
+    startWatchdog();
+}
 
-    async function stopAdmin(withConfirm) {
-        if (withConfirm && !confirm("配信を終了しますか？")) return;
-        clearInterval(updateInterval);
-        clearInterval(watchdogTimer);
-        const forceReload = setTimeout(() => { location.reload(); }, 2000);
-        try {
-            await db.collection("locations").doc(myId).delete();
-            clearTimeout(forceReload);
-            location.reload();
-        } catch (e) { location.reload(); }
-    }
+function initMap() {
+    // ...中略...
+    function sendLocation() {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            db.collection("locations").doc(myId).set({
+                lat: pos.coords.latitude, 
+                lng: pos.coords.longitude, 
+                name: myName,
+                icon: myIconUrl, // 【追加】アイコンURLを送信
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => { lastSuccessTime = Date.now(); });
+            
+            // 自分のアイコンも画像にする
+            const customIcon = L.divIcon({
+                className: 'custom-icon',
+                html: `<div class="icon-circle" style="background-image: url(${myIconUrl});"></div>`,
+                iconSize: [40, 40],
+                iconAnchor: [20, 20]
+            });
 
-    function startWatchdog() {
-        lastSuccessTime = Date.now();
-        watchdogTimer = setInterval(() => {
-            // 【変更】60000 -> 25000 (25秒)
-            if (Date.now() - lastSuccessTime > 25000) {
-                document.getElementById('alert-msg').style.display = 'block';
-                setTimeout(() => stopAdmin(false), 3000);
+            if (myMarker) {
+                myMarker.setLatLng([pos.coords.latitude, pos.coords.longitude]);
+            } else {
+                myMarker = L.marker([pos.coords.latitude, pos.coords.longitude], {icon: customIcon})
+                    .addTo(map)
+                    .bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
             }
-        }, 5000);
+        }, (err) => console.log(err), { enableHighAccuracy: true });
     }
+    sendLocation();
+    updateInterval = setInterval(sendLocation, 10000);
+}
+</script>
 
-    function initMap() {
-        map = L.map('map').setView([35.6895, 139.6917], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        function sendLocation() {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                db.collection("locations").doc(myId).set({
-                    lat: pos.coords.latitude, lng: pos.coords.longitude, name: myName,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }).then(() => { lastSuccessTime = Date.now(); });
-                if (myMarker) { myMarker.setLatLng([pos.coords.latitude, pos.coords.longitude]); }
-                else { myMarker = L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' }).openTooltip(); }
-            }, (err) => console.log(err), { enableHighAccuracy: true });
-        }
-        sendLocation();
-        updateInterval = setInterval(sendLocation, 10000);
-    }
-    window.addEventListener('pagehide', () => { if (myId) db.collection("locations").doc(myId).delete(); });
-    </script>
-</body>
-</html>
+<style>
+/* 【追加】丸いアイコン用のスタイル */
+.custom-icon { background: none; border: none; }
+.icon-circle {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background-size: cover;
+    background-position: center;
+    border: 3px solid white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+}
+</style>
