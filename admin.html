@@ -3,49 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置配信 - 管理画面</title>
+    <title>山車位置配信 - 管理ツール</title>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; }
-        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #b22222, #000); display: flex; justify-content: center; align-items: center; z-index: 3000; }
-        .login-card { background: white; padding: 30px; border-radius: 20px; text-align: center; width: 85%; max-width: 400px; }
-        input[type="text"] { width: 100%; padding: 18px; margin-bottom: 20px; border: 3px solid #ddd; border-radius: 12px; font-size: 20px; font-weight: bold; box-sizing: border-box; }
-        #preview-container { width: 150px; height: 150px; margin: 0 auto 20px; border-radius: 15px; border: 4px dashed #b22222; background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; color: #b22222; font-weight: bold; overflow: hidden; }
-        .start-btn { width: 100%; padding: 22px; background: #b22222; color: white; border: none; border-radius: 15px; font-size: 24px; font-weight: bold; cursor: pointer; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
+
+        /* --- 設定画面 --- */
+        #login-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #b22222, #000);
+            display: flex; justify-content: center; align-items: center; z-index: 3000;
+        }
+        .login-card {
+            background: white; padding: 40px 30px; border-radius: 24px;
+            text-align: center; width: 85%; max-width: 400px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.6);
+        }
+        h2 { color: #b22222; margin-top: 0; margin-bottom: 25px; font-size: 26px; }
         
+        input[type="text"] {
+            width: 100%; padding: 22px; margin-bottom: 25px;
+            border: 3px solid #ddd; border-radius: 15px;
+            box-sizing: border-box; font-size: 22px; font-weight: bold;
+            text-align: center;
+        }
+
+        .start-btn {
+            width: 100%; padding: 25px; background: #b22222; color: white;
+            border: none; border-radius: 15px; font-size: 26px; font-weight: bold;
+            cursor: pointer; box-shadow: 0 8px 20px rgba(178, 34, 34, 0.4);
+        }
+
+        /* --- 配信中画面 --- */
         #admin-display { display: none; position: relative; width: 100%; height: 100vh; }
         #map { height: 100%; width: 100%; z-index: 1; }
-        #floating-panel { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 360px; z-index: 2000; background: rgba(0, 0, 0, 0.85); border: 2px solid #b22222; border-radius: 20px; padding: 15px; text-align: center; color: white; backdrop-filter: blur(5px); }
-        
-        /* 追跡ON/OFFスイッチ */
-        .follow-toggle { background: #555; border: none; color: white; padding: 10px; border-radius: 8px; margin-bottom: 10px; cursor: pointer; font-size: 14px; }
-        .follow-toggle.active { background: #28a745; }
 
-        .stop-btn { width: 100%; padding: 15px; background: #dc3545; color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; }
-        .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 4px 10px; font-weight: bold; color: #b22222; }
-        .icon-circle { width: 50px; height: 50px; border-radius: 50%; background-size: cover; border: 3px solid white; }
+        /* --- フローティング管理パネル --- */
+        #floating-panel {
+            position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+            width: 92%; max-width: 380px; z-index: 2000;
+            background: rgba(0, 0, 0, 0.88); border: 2px solid #b22222;
+            border-radius: 20px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center; backdrop-filter: blur(8px);
+        }
+
+        #active-name { font-size: 20px; font-weight: bold; color: #ffc107; margin-bottom: 8px; }
+
+        /* 【新設】極小表示のGPS/送信情報 */
+        #status-monitor {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px; border-radius: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 10px; /* 小さく表示 */
+            color: #00ff00; text-align: left;
+            display: flex; flex-wrap: wrap; justify-content: space-between;
+            margin-bottom: 10px; line-height: 1.5;
+        }
+        .monitor-item { width: 48%; }
+
+        .btn-group { display: flex; gap: 8px; }
+        .follow-toggle { flex: 1; background: #444; border: none; color: white; padding: 12px; border-radius: 10px; font-size: 13px; font-weight: bold; }
+        .follow-toggle.active { background: #28a745; }
+        .stop-btn { flex: 1; background: #dc3545; border: none; color: white; padding: 12px; border-radius: 10px; font-size: 13px; font-weight: bold; }
+
+        .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 4px 10px; font-weight: bold; color: #b22222; font-size: 16px; }
     </style>
 </head>
 <body>
+
     <div id="login-container">
         <div class="login-card">
             <h2>山車配信設定</h2>
             <input type="text" id="admin-name" placeholder="山車区名（例：仲町）">
-            <div id="preview-container">画像未選択</div>
-            <input type="file" id="admin-icon-file" accept="image/*" style="margin-bottom:20px;">
             <button class="start-btn" onclick="startAdmin()">配信を開始する</button>
         </div>
     </div>
 
     <div id="admin-display">
         <div id="map"></div>
+        
         <div id="floating-panel">
-            <div id="active-name" style="font-size: 20px; font-weight: bold; color: #ffc107; margin-bottom:5px;"></div>
-            <button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">自分を自動追跡: ON</button>
-            <button class="stop-btn" onclick="stopAdmin(true)">配信終了（データを消す）</button>
+            <div id="active-name"></div>
+            
+            <div id="status-monitor">
+                <div class="monitor-item" id="mon-lat">LAT: ---</div>
+                <div class="monitor-item" id="mon-lng">LNG: ---</div>
+                <div class="monitor-item" id="mon-acc">ACC: ---</div>
+                <div class="monitor-item" id="mon-time">UPD: ---</div>
+            </div>
+
+            <div class="btn-group">
+                <button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">追跡:ON</button>
+                <button class="stop-btn" onclick="stopAdmin(true)">配信終了</button>
+            </div>
         </div>
     </div>
 
@@ -61,37 +116,19 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    let myName = "", myIconData = "", isAutoFollow = true;
+    let myName = "", isAutoFollow = true;
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map, myMarker, updateInterval, watchdogTimer, lastSuccessTime = Date.now();
 
     window.onload = () => {
-        const n = localStorage.getItem('dashi_name'), i = localStorage.getItem('dashi_icon');
+        const n = localStorage.getItem('dashi_name');
         if (n) document.getElementById('admin-name').value = n;
-        if (i) { myIconData = i; updatePreview(i); }
     };
-
-    document.getElementById('admin-icon-file').addEventListener('change', function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            myIconData = event.target.result;
-            updatePreview(myIconData);
-            localStorage.setItem('dashi_icon', myIconData);
-        };
-        reader.readAsDataURL(file);
-    });
-
-    function updatePreview(url) {
-        const p = document.getElementById('preview-container');
-        p.style.backgroundImage = `url(${url})`; p.innerText = ""; p.style.borderStyle = "solid";
-    }
 
     function toggleAutoFollow() {
         isAutoFollow = !isAutoFollow;
         const btn = document.getElementById('follow-btn');
-        btn.innerText = "自分を自動追跡: " + (isAutoFollow ? "ON" : "OFF");
+        btn.innerText = "追跡:" + (isAutoFollow ? "ON" : "OFF");
         btn.className = "follow-toggle " + (isAutoFollow ? "active" : "");
     }
 
@@ -101,7 +138,7 @@
         localStorage.setItem('dashi_name', myName);
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('admin-display').style.display = 'block';
-        document.getElementById('active-name').innerText = myName;
+        document.getElementById('active-name').innerText = "【" + myName + "】";
         initMap();
         startWatchdog();
     }
@@ -114,7 +151,7 @@
     }
 
     async function stopAdmin(withConfirm) {
-        if (withConfirm && !confirm("配信終了しますか？")) return;
+        if (withConfirm && !confirm("配信を終了してデータを消去しますか？")) return;
         clearInterval(updateInterval); clearInterval(watchdogTimer);
         try { await db.collection("locations").doc(myId).delete(); location.reload(); } catch (e) { location.reload(); }
     }
@@ -125,16 +162,32 @@
 
         function sendLocation() {
             navigator.geolocation.getCurrentPosition((pos) => {
-                const lat = pos.coords.latitude, lng = pos.coords.longitude;
-                db.collection("locations").doc(myId).set({ lat, lng, name: myName, icon: myIconData, timestamp: firebase.firestore.FieldValue.serverTimestamp() }).then(() => { lastSuccessTime = Date.now(); });
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                const acc = Math.round(pos.coords.accuracy);
+                const time = new Date().toLocaleTimeString('ja-JP', {hour12: false});
 
-                // オートフォロー
+                // モニター表示を更新
+                document.getElementById('mon-lat').innerText = `LAT: ${lat.toFixed(5)}`;
+                document.getElementById('mon-lng').innerText = `LNG: ${lng.toFixed(5)}`;
+                document.getElementById('mon-acc').innerText = `ACC: ±${acc}m`;
+                document.getElementById('mon-time').innerText = `UPD: ${time}`;
+
+                db.collection("locations").doc(myId).set({
+                    lat, lng, name: myName, 
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                }).then(() => { lastSuccessTime = Date.now(); });
+
                 if (isAutoFollow) map.panTo([lat, lng]);
 
-                const customIcon = L.divIcon({ className: 'custom-icon', html: `<div class="icon-circle" style="background-image: url(${myIconData || 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'});"></div>`, iconSize: [50, 50], iconAnchor: [25, 25] });
-                if (myMarker) { myMarker.setLatLng([lat, lng]); }
-                else { myMarker = L.marker([lat, lng], {icon: customIcon}).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' }); }
-            }, (err) => {}, { enableHighAccuracy: true });
+                if (myMarker) {
+                    myMarker.setLatLng([lat, lng]);
+                } else {
+                    myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
+                }
+            }, (err) => {
+                document.getElementById('mon-time').innerText = "ERR: GPS取得失敗";
+            }, { enableHighAccuracy: true, timeout: 8000 });
         }
         sendLocation();
         updateInterval = setInterval(sendLocation, 10000);
