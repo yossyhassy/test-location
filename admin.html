@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置配信 - 統合管理パネル</title>
+    <title>山車位置配信 - 統合管理・追跡パネル</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -21,52 +21,67 @@
         }
         .login-card {
             background: white; padding: 30px; border-radius: 24px;
-            text-align: center; width: 85%; max-width: 400px;
+            text-align: center; width: 85%; max-width: 380px;
         }
         input[type="text"] {
-            width: 100%; padding: 20px; margin-bottom: 20px;
+            width: 100%; padding: 15px; margin-bottom: 20px;
             border: 3px solid #ddd; border-radius: 12px;
-            box-sizing: border-box; font-size: 20px; font-weight: bold; text-align: center;
+            box-sizing: border-box; font-size: 18px; font-weight: bold; text-align: center;
         }
         .start-btn {
-            width: 100%; padding: 20px; background: #b22222; color: white;
-            border: none; border-radius: 15px; font-size: 24px; font-weight: bold; cursor: pointer;
+            width: 100%; padding: 15px; background: #b22222; color: white;
+            border: none; border-radius: 12px; font-size: 20px; font-weight: bold; cursor: pointer;
         }
 
         /* --- 配信中画面 --- */
         #admin-display { display: none; position: relative; width: 100%; height: 100vh; }
         #map { height: 100%; width: 100%; z-index: 1; }
 
-        /* --- 【強化】フローティング統合パネル --- */
+        /* --- 【新設】左側の他山車選択リスト --- */
+        #other-float-menu {
+            position: absolute; top: 15px; left: 15px;
+            z-index: 2000; display: flex; flex-direction: column; gap: 8px;
+            width: 160px; max-height: 50vh; overflow-y: auto;
+        }
+        .menu-title {
+            background: rgba(51, 51, 51, 0.9); color: white; padding: 8px;
+            font-size: 12px; border-radius: 6px; font-weight: bold; text-align: center;
+        }
+        .user-btn {
+            background: rgba(255, 255, 255, 0.9); border: 2px solid #007bff; border-radius: 8px;
+            padding: 10px; font-size: 13px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2); text-align: left; transition: 0.2s;
+        }
+        .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
+
+        /* --- フローティング操作パネル（下部） --- */
         #floating-panel {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-            width: 92%; max-width: 400px; z-index: 2000;
-            background: rgba(0, 0, 0, 0.9); border: 2px solid #b22222;
-            border-radius: 20px; padding: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            backdrop-filter: blur(10px);
+            position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+            width: 92%; max-width: 380px; z-index: 2000;
+            background: rgba(0, 0, 0, 0.85); border: 2px solid #b22222;
+            border-radius: 18px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
         }
 
-        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        #active-name { font-size: 20px; font-weight: bold; color: #ffc107; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        #active-name { font-size: 16px; font-weight: bold; color: #ffc107; }
         
-        /* GPS・時刻モニター */
         #status-monitor {
             background: rgba(255, 255, 255, 0.1);
-            padding: 10px; border-radius: 12px;
-            font-family: 'Courier New', monospace; font-size: 11px; color: #00ff00;
-            display: grid; grid-template-columns: 1fr 1fr; gap: 5px;
-            margin-bottom: 15px; border: 1px solid rgba(0, 255, 0, 0.2);
+            padding: 8px; border-radius: 10px;
+            font-family: 'Courier New', monospace; font-size: 10px; color: #00ff00;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+            margin-bottom: 10px;
         }
 
-        /* ボタン群 */
-        .btn-group { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
-        .follow-toggle { background: #444; border: none; color: white; padding: 15px; border-radius: 12px; font-size: 14px; font-weight: bold; }
+        /* ボタンサイズを少し小さく */
+        .btn-group { display: grid; grid-template-columns: 1fr 2.5fr; gap: 8px; }
+        .follow-toggle { background: #444; border: none; color: white; padding: 10px; border-radius: 10px; font-size: 12px; font-weight: bold; }
         .follow-toggle.active { background: #28a745; }
-        .stop-btn { background: #dc3545; border: none; color: white; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        .stop-btn { background: #dc3545; border: none; color: white; padding: 10px; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; }
 
-        /* ラベル */
-        .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 4px 10px; font-weight: bold; color: #b22222; font-size: 14px; }
-        .other-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 10px; font-weight: bold; color: #007bff; font-size: 14px; }
+        .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 3px 8px; font-weight: bold; color: #b22222; font-size: 13px; }
+        .other-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 3px 8px; font-weight: bold; color: #007bff; font-size: 13px; }
     </style>
 </head>
 <body>
@@ -81,23 +96,28 @@
 
     <div id="admin-display">
         <div id="map"></div>
+
+        <div id="other-float-menu">
+            <div class="menu-title">他山車を追跡</div>
+            <div id="button-list"></div>
+        </div>
         
         <div id="floating-panel">
             <div class="panel-header">
                 <div id="active-name"></div>
-                <div style="font-size: 10px; color: #aaa;">📡 配信中</div>
+                <div style="font-size: 9px; color: #aaa;">📡 配信中</div>
             </div>
 
             <div id="status-monitor">
-                <div>緯度: <span id="mon-lat">---</span></div>
-                <div>経度: <span id="mon-lng">---</span></div>
-                <div>精度: <span id="mon-acc">---</span></div>
-                <div>時刻: <span id="mon-time">---</span></div>
+                <div>LAT: <span id="mon-lat">---</span></div>
+                <div>LNG: <span id="mon-lng">---</span></div>
+                <div>ACC: <span id="mon-acc">---</span></div>
+                <div>UPD: <span id="mon-time">---</span></div>
             </div>
 
             <div class="btn-group">
-                <button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">追跡ON</button>
-                <button class="stop-btn" onclick="stopAdmin(true)">配信終了（データ削除）</button>
+                <button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">自分を追跡</button>
+                <button class="stop-btn" onclick="stopAdmin(true)">配信終了</button>
             </div>
         </div>
     </div>
@@ -114,7 +134,7 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    let myName = "", isAutoFollow = true;
+    let myName = "", isAutoFollow = true, followingOtherId = null;
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map, myMarker, updateInterval, watchdogTimer, lastSuccessTime = Date.now();
     const otherMarkers = {};
@@ -125,11 +145,33 @@
         if (n) document.getElementById('admin-name').value = n;
     };
 
+    // 自分を追跡するかの切り替え
     function toggleAutoFollow() {
         isAutoFollow = !isAutoFollow;
+        if (isAutoFollow) followingOtherId = null; // 自分を追跡する時は他人の追跡を解除
+        updateUIState();
+    }
+
+    // 他の山車を追跡する切り替え
+    function toggleFollowOther(id) {
+        if (followingOtherId === id) {
+            followingOtherId = null;
+        } else {
+            followingOtherId = id;
+            isAutoFollow = false; // 他人を追跡する時は自分の自動追跡をOFFにする
+            if (otherMarkers[id]) map.flyTo(otherMarkers[id].getLatLng(), 17);
+        }
+        updateUIState();
+    }
+
+    function updateUIState() {
         const btn = document.getElementById('follow-btn');
-        btn.innerText = isAutoFollow ? "追跡ON" : "追跡OFF";
+        btn.innerText = isAutoFollow ? "自分を追跡:ON" : "自分を追跡:OFF";
         btn.className = "follow-toggle " + (isAutoFollow ? "active" : "");
+
+        document.querySelectorAll('.user-btn').forEach(b => {
+            b.classList.toggle('following', b.id === 'btn-' + followingOtherId);
+        });
     }
 
     function startAdmin() {
@@ -138,7 +180,7 @@
         localStorage.setItem('dashi_name', myName);
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('admin-display').style.display = 'block';
-        document.getElementById('active-name').innerText = myName;
+        document.getElementById('active-name').innerText = "自山車: " + myName;
         initMap();
         startWatchdog();
     }
@@ -155,22 +197,26 @@
     }
 
     async function stopAdmin(withConfirm) {
-        if (withConfirm && !confirm("配信を終了し、地図からデータを削除しますか？")) return;
+        if (withConfirm && !confirm("配信を終了しますか？")) return;
         clearInterval(updateInterval); clearInterval(watchdogTimer);
         try { await db.collection("locations").doc(myId).delete(); location.reload(); } catch (e) { location.reload(); }
     }
 
     function removeOtherUI(id) {
         if (otherMarkers[id]) { map.removeLayer(otherMarkers[id]); delete otherMarkers[id]; }
+        const btn = document.getElementById('btn-' + id);
+        if (btn) btn.remove();
         delete lastUpdateOthers[id];
+        if (followingOtherId === id) followingOtherId = null;
     }
 
     function initMap() {
         map = L.map('map', { zoomControl: false }).setView([36.2598, 138.8900], 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // 他の山車の監視
+        // 他の山車の位置を監視してリストを作る
         db.collection("locations").onSnapshot(snapshot => {
+            const buttonList = document.getElementById('button-list');
             snapshot.docChanges().forEach(change => {
                 const data = change.doc.data();
                 const id = change.doc.id;
@@ -179,6 +225,20 @@
 
                 const pos = [data.lat, data.lng];
                 lastUpdateOthers[id] = Date.now();
+
+                // 左側の追跡ボタン作成
+                let btn = document.getElementById('btn-' + id);
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.id = 'btn-' + id;
+                    btn.className = 'user-btn';
+                    btn.onclick = () => toggleFollowOther(id);
+                    buttonList.appendChild(btn);
+                }
+                btn.innerText = (followingOtherId === id ? "👀 " : "📍 ") + data.name;
+
+                if (followingOtherId === id) map.panTo(pos);
+
                 if (otherMarkers[id]) {
                     otherMarkers[id].setLatLng(pos).getTooltip().setContent(data.name);
                 } else {
@@ -189,12 +249,10 @@
 
         function sendLocation() {
             navigator.geolocation.getCurrentPosition((pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
+                const lat = pos.coords.latitude, lng = pos.coords.longitude;
                 const acc = Math.round(pos.coords.accuracy);
                 const time = new Date().toLocaleTimeString('ja-JP', {hour12: false});
 
-                // モニター表示の更新
                 document.getElementById('mon-lat').innerText = lat.toFixed(5);
                 document.getElementById('mon-lng').innerText = lng.toFixed(5);
                 document.getElementById('mon-acc').innerText = `±${acc}m`;
@@ -211,9 +269,7 @@
                 } else {
                     myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
                 }
-            }, (err) => {
-                document.getElementById('mon-time').innerText = "GPSエラー";
-            }, { enableHighAccuracy: true, timeout: 8000 });
+            }, (err) => {}, { enableHighAccuracy: true, timeout: 8000 });
         }
         sendLocation();
         updateInterval = setInterval(sendLocation, 10000);
