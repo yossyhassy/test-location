@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理者ログイン - 位置配信</title>
+    <title>管理者ログイン - 自動停止機能付</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -21,6 +21,8 @@
         #controls { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
         
         .admin-label { background: white; border: 2px solid #28a745; border-radius: 5px; padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; }
+        /* 警告表示用 */
+        #alert-msg { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(220, 53, 69, 0.9); color: white; padding: 10px 20px; border-radius: 50px; display: none; z-index: 3000; }
     </style>
 </head>
 <body>
@@ -34,8 +36,10 @@
         </div>
     </div>
 
+    <div id="alert-msg">⚠️ 通信途絶のため自動停止します...</div>
+
     <div id="controls">
-        <button onclick="stopAdmin()" style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">配信を終了してデータを消す</button>
+        <button onclick="stopAdmin(true)" style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">配信を終了</button>
     </div>
 
     <div id="map"></div>
@@ -57,7 +61,9 @@
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map;
     let myMarker;
-    let updateInterval; // タイマー管理用
+    let updateInterval;
+    let watchdogTimer; // 【追加】生存監視用
+    let lastSuccessTime = Date.now(); // 【追加】最後に成功した時刻
 
     function startAdmin() {
         myName = document.getElementById('admin-name').value.trim();
@@ -68,26 +74,36 @@
         document.getElementById('controls').style.display = 'block';
 
         initMap();
+        startWatchdog(); // 監視開始
     }
 
-    // --- 【追加】配信終了時にデータを削除する関数 ---
-    async function stopAdmin() {
-        if (confirm("配信を終了し、地図からあなたのピンを削除しますか？")) {
-            // タイマーを止める
-            clearInterval(updateInterval);
-
-            try {
-                // Firestoreから自分のドキュメントを削除
-                await db.collection("locations").doc(myId).delete();
-                console.log("データを削除しました");
-                
-                // ページをリロードして初期状態に戻す
-                location.reload();
-            } catch (error) {
-                console.error("削除エラー:", error);
-                alert("削除に失敗しましたが、ページを閉じます。");
-                location.reload();
+    // --- 【重要】生存監視タイマー ---
+    function startWatchdog() {
+        lastSuccessTime = Date.now();
+        watchdogTimer = setInterval(() => {
+            const now = Date.now();
+            // 60秒間更新がなければ強制終了
+            if (now - lastSuccessTime > 60000) {
+                document.getElementById('alert-msg').style.display = 'block';
+                setTimeout(() => {
+                    stopAdmin(false); // 確認なしで削除実行
+                }, 2000);
             }
+        }, 10000); // 10秒ごとにチェック
+    }
+
+    async function stopAdmin(withConfirm) {
+        if (withConfirm && !confirm("配信を終了しますか？")) return;
+
+        clearInterval(updateInterval);
+        clearInterval(watchdogTimer);
+
+        try {
+            await db.collection("locations").doc(myId).delete();
+            location.reload();
+        } catch (e) {
+            console.error(e);
+            location.reload();
         }
     }
 
@@ -103,6 +119,9 @@
                 db.collection("locations").doc(myId).set({
                     lat: lat, lng: lng, name: myName,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                }).then(() => {
+                    // 送信に成功した時刻を更新
+                    lastSuccessTime = Date.now();
                 });
 
                 if (myMarker) {
@@ -112,27 +131,16 @@
                         .bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' }).openTooltip();
                     map.setView([lat, lng], 15);
                 }
-            }, (err) => console.log(err), { enableHighAccuracy: true });
+            }, (err) => console.log("GPSエラー:", err), { enableHighAccuracy: true });
         }
 
         sendLocation();
-        updateInterval = setInterval(sendLocation, 10000); // タイマーを変数に格納
+        updateInterval = setInterval(sendLocation, 10000);
     }
-   // --- タブを閉じたり、アプリを離れた時に自動で削除を試みる ---
-window.addEventListener('pagehide', () => {
-    // 削除処理を呼び出す。確認ダイアログなしで実行するために少し工夫
-    if (myId) {
-        // 注意: 非同期処理なので、ブラウザが閉じるまでに間に合わないこともあります
-        db.collection("locations").doc(myId).delete();
-    }
-    });
 
-    // スマホで「戻る」ボタンなどを押した時用
-    window.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            // バックグラウンドに回った時にも削除したい場合はここに記述
-            // （ただし、意図せず消えるのを防ぐため、通常は pagehide だけでOK）
-        }
+    // タブを閉じた時の保険
+    window.addEventListener('pagehide', () => {
+        if (myId) db.collection("locations").doc(myId).delete();
     });
     </script>
 </body>
