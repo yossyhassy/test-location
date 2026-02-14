@@ -1,1 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>管理者ログイン - 位置共有</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #333; display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        .login-card { background: white; padding: 30px; border-radius: 10px; text-align: center; }
+        input { padding: 10px; width: 200px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ddd; }
+        button { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        #map { height: 100vh; width: 100%; visibility: hidden; }
+        #controls { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
+    </style>
+</head>
+<body>
+    <div id="login-container">
+        <div class="login-card">
+            <h2>管理者用ログイン</h2>
+            <input type="text" id="admin-name" placeholder="管理者名を入力">
+            <br>
+            <button onclick="startAdmin()">配信開始</button>
+        </div>
+    </div>
+    <div id="controls"><button onclick="location.reload()">ログアウト</button></div>
+    <div id="map"></div>
 
+    <script>
+    const firebaseConfig = { /* 同じ設定をここに */ };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let myName = "";
+    const myId = "admin_" + Math.random().toString(36).substring(2, 9);
+    let map;
+
+    function startAdmin() {
+        myName = document.getElementById('admin-name').value.trim();
+        if (!myName) return alert("名前が必要です");
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('map').style.visibility = 'visible';
+        document.getElementById('controls').style.display = 'block';
+        initMap();
+    }
+
+    function initMap() {
+        map = L.map('map').setView([35.6895, 139.6917], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // 10秒ごとに送信
+        setInterval(() => {
+            navigator.geolocation.getCurrentPosition(pos => {
+                db.collection("locations").doc(myId).set({
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                    name: myName,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            });
+        }, 10000);
+    }
+    </script>
+</body>
+</html>
