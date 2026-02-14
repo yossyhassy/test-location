@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（完成版）</title>
+    <title>現在地共有マップ（足跡60秒制限版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -60,14 +60,13 @@
     let myName = "";
     const myId = "user_" + Math.random().toString(36).substring(2, 9);
     const markers = {};
-    const userPaths = {};
+    const userPaths = {}; // 座標と時刻を保持 { id: [{pos: [lat, lng], time: 12345}, ...] }
     const pathLayers = {};
     let map;
     let trackingTimer = null;
     let isTracking = true;
     let showPath = true;
 
-    // 位置送信関数
     function sendLocation() {
         if (!isTracking || !myName) return;
         navigator.geolocation.getCurrentPosition((position) => {
@@ -108,31 +107,44 @@
         sendLocation();
         trackingTimer = setInterval(sendLocation, 10000);
 
+        // --- 古い足跡を消去するための監視用タイマー ---
+        setInterval(() => {
+            const now = Date.now();
+            for (let id in userPaths) {
+                // 60,000ミリ秒（60秒）以上前のデータを削除
+                userPaths[id] = userPaths[id].filter(p => (now - p.time) < 60000);
+                
+                // 地図上の線を更新
+                if (pathLayers[id]) {
+                    const latlngs = userPaths[id].map(p => p.pos);
+                    pathLayers[id].setLatLngs(latlngs);
+                }
+            }
+        }, 5000); // 5秒ごとに古いデータがないかチェック
+
         db.collection("locations").onSnapshot((snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 const data = change.doc.data();
                 const id = change.doc.id;
 
-                // --- 【重要】名前がないユーザーは表示しない ---
-                if (!data || !data.name || data.name.trim() === "") {
-                    return; 
-                }
+                if (!data || !data.name || data.name.trim() === "") return;
 
                 const pos = [data.lat, data.lng];
 
                 if (change.type === "added" || change.type === "modified") {
                     if (!userPaths[id]) userPaths[id] = [];
-                    // 重複地点を避けるための簡易チェック
-                    const lastPos = userPaths[id][userPaths[id].length - 1];
-                    if (!lastPos || lastPos[0] !== pos[0] || lastPos[1] !== pos[1]) {
-                        userPaths[id].push(pos);
-                    }
                     
+                    // 時刻付きで保存
+                    userPaths[id].push({ pos: pos, time: Date.now() });
+                    
+                    const latlngs = userPaths[id].map(p => p.pos);
+
                     if (pathLayers[id]) {
-                        pathLayers[id].setLatLngs(userPaths[id]);
+                        pathLayers[id].setLatLngs(latlngs);
                     } else {
                         const color = (id === myId) ? 'blue' : 'red';
-                        pathLayers[id] = L.polyline(userPaths[id], {color: color, weight: 3, opacity: 0.6});
+                        // weight: 2 にして線を細く設定
+                        pathLayers[id] = L.polyline(latlngs, {color: color, weight: 2, opacity: 0.8});
                         if (showPath) pathLayers[id].addTo(map);
                     }
 
