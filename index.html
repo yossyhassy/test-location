@@ -3,30 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（完全クリーンアップ版）</title>
-
+    <title>閲覧用 - 25秒自動削除版</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
         #map { height: 100vh; width: 100%; z-index: 1; }
         #admin-menu { position: fixed; top: 10px; left: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 200px; }
         .menu-title { background: #333; color: white; padding: 8px 12px; font-size: 12px; border-radius: 5px; font-weight: bold; text-align: center; }
         .user-btn { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.2s; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .user-btn:hover { background: #f0f7ff; transform: translateX(5px); }
         .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; }
     </style>
 </head>
 <body>
-
-    <div id="admin-menu">
-        <div class="menu-title">管理者を追跡</div>
-        <div id="button-list"></div>
-    </div>
-
+    <div id="admin-menu"><div class="menu-title">管理者を追跡</div><div id="button-list"></div></div>
     <div id="map"></div>
 
     <script>
@@ -38,7 +30,6 @@
         messagingSenderId: "123347808605",
         appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
@@ -50,37 +41,27 @@
     const pathLayers = {};
     const lastUpdateTimes = {}; 
 
-    function focusUser(id) {
-        if (markers[id]) {
-            map.flyTo(markers[id].getLatLng(), 16);
-            markers[id].openTooltip();
-        }
-    }
+    function focusUser(id) { if (markers[id]) { map.flyTo(markers[id].getLatLng(), 16); markers[id].openTooltip(); } }
 
-    // --- 【重要】DBからも物理的に削除する命令 ---
     async function deleteFromDB(id) {
-        try {
-            await db.collection("locations").doc(id).delete();
-            console.log("DBからも削除完了:", id);
-        } catch (e) {
-            console.warn("DB削除に失敗（他者が既に消した可能性あり）");
-        }
+        try { await db.collection("locations").doc(id).delete(); } catch (e) {}
     }
 
-    // 10秒おきの生存チェック
+    // --- 生存チェックタイマー ---
     setInterval(() => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
-            if (now - lastUpdateTimes[id] > 60000) {
-                console.log(id + " は60秒以上更新がないためUIとDBから削除します");
+            // 【変更】60000 -> 25000 (25秒)
+            if (now - lastUpdateTimes[id] > 25000) {
+                console.log(id + " を25秒ルールで削除します");
                 removeUserUI(id);
-                deleteFromDB(id); // ★ここでDBからも消す
+                deleteFromDB(id);
                 delete lastUpdateTimes[id];
             }
         }
-    }, 10000);
+    }, 5000); // チェック頻度も5秒に上げて機敏に
 
-    // 足跡消去タイマー（30秒）
+    // 足跡消去（30秒のままですが、必要ならここも短くできます）
     setInterval(() => {
         const now = Date.now();
         for (let id in userPaths) {
@@ -93,26 +74,16 @@
         }
     }, 3000);
 
-    // 監視処理
     db.collection("locations").onSnapshot(snapshot => {
         const buttonList = document.getElementById('button-list');
-
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
-
-            if (!data || !data.name || change.type === "removed") {
-                removeUserUI(id);
-                delete lastUpdateTimes[id];
-                return;
-            }
+            if (!data || !data.name || change.type === "removed") { removeUserUI(id); delete lastUpdateTimes[id]; return; }
 
             const pos = [data.lat, data.lng];
-
             if (change.type === "added" || change.type === "modified") {
                 lastUpdateTimes[id] = Date.now();
-
-                // 1. ボタン更新
                 let btn = document.getElementById('btn-' + id);
                 if (!btn) {
                     btn = document.createElement('button');
@@ -122,24 +93,12 @@
                     buttonList.appendChild(btn);
                 }
                 btn.innerText = "📍 " + data.name;
-
-                // 2. 足跡
                 if (!userPaths[id]) userPaths[id] = [];
                 userPaths[id].push({ pos: pos, time: Date.now() });
-                if (pathLayers[id]) {
-                    pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
-                    if (userPaths[id].length >= 2) pathLayers[id].addTo(map);
-                } else {
-                    pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
-                }
-                
-                // 3. マーカー
-                if (markers[id]) {
-                    markers[id].setLatLng(pos).getTooltip().setContent(data.name);
-                } else {
-                    markers[id] = L.marker(pos).addTo(map)
-                        .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
-                }
+                if (pathLayers[id]) { pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos)); if (userPaths[id].length >= 2) pathLayers[id].addTo(map); }
+                else { pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map); }
+                if (markers[id]) { markers[id].setLatLng(pos).getTooltip().setContent(data.name); }
+                else { markers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' }); }
             }
         });
     });
