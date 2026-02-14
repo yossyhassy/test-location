@@ -3,44 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（安定版）</title>
-
+    <title>現在地共有マップ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
-        #map { height: 100vh; width: 100%; z-index: 1; background: #eee; } /* 背景色をつけて読み込み中を判別 */
-
-        #admin-menu {
-            position: fixed; top: 10px; left: 10px;
-            z-index: 2000; display: flex; flex-direction: column; gap: 8px;
-            max-width: 200px;
-        }
-        .menu-title {
-            background: #333; color: white; padding: 8px 12px;
-            font-size: 12px; border-radius: 5px; font-weight: bold; text-align: center;
-        }
-        .user-btn {
-            background: white; border: 2px solid #007bff; border-radius: 5px;
-            padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: left;
-        }
-        .viewer-label { 
-            background: white; border: 2px solid #007bff; border-radius: 5px; 
-            padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; 
-        }
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+        #map { height: 100vh; width: 100%; z-index: 1; }
+        #admin-menu { position: fixed; top: 10px; left: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; max-width: 200px; }
+        .user-btn { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 2px 8px; font-weight: bold; }
     </style>
 </head>
 <body>
-
-    <div id="admin-menu">
-        <div class="menu-title">管理者を追跡</div>
-        <div id="button-list"></div>
-    </div>
-
+    <div id="admin-menu"><div id="button-list"></div></div>
     <div id="map"></div>
 
     <script>
@@ -53,120 +30,76 @@
         appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
     };
 
-    // Firebaseの初期化（エラー回避のためtry-catch）
-    try {
-        firebase.initializeApp(firebaseConfig);
-    } catch (e) {
-        console.error("Firebaseの初期化に失敗:", e);
-    }
+    firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 地図の初期化（これを最初に行うことで確実に表示させる）
+    // 地図の初期化（これを一番に実行）
     const map = L.map('map').setView([35.6895, 139.6917], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {};
     const userPaths = {}; 
     const pathLayers = {};
-    const lastUpdateTimes = {};
+    const lastSeen = {};
 
-    function focusUser(id) {
-        if (markers[id]) map.flyTo(markers[id].getLatLng(), 16);
+    function removeUser(id) {
+        if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+        if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
+        const btn = document.getElementById('btn-' + id);
+        if (btn) btn.remove();
+        delete lastSeen[id];
     }
 
-    // DBお掃除関数（インデックス未作成でも他を止めないよう修正）
-    async function cleanupDatabase() {
-        try {
-            const threshold = new Date(Date.now() - 60000);
-            const oldDocs = await db.collection("locations")
-                .where("timestamp", "<", threshold)
-                .get();
-
-            const batch = db.batch();
-            oldDocs.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
-        } catch (e) {
-            // インデックス未作成の場合はここにエラーが出るが、無視して続行
-            console.warn("クリーンアップは現在利用できません(Index作成中など):", e.message);
-        }
-    }
-
-    // 足跡消去
-    setInterval(() => {
-        const now = Date.now();
-        for (let id in userPaths) {
-            userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
-            if (pathLayers[id]) {
-                const latlngs = userPaths[id].map(p => p.pos);
-                pathLayers[id].setLatLngs(latlngs);
-                if (latlngs.length < 2) map.removeLayer(pathLayers[id]);
-            }
-        }
-    }, 3000);
-
-    // 生存確認
-    setInterval(() => {
-        const now = Date.now();
-        for (let id in lastUpdateTimes) {
-            if (now - lastUpdateTimes[id] > 60000) removeUserUI(id);
-        }
-        cleanupDatabase(); 
-    }, 10000);
-
-    // 監視
+    // 監視（シンプルな取得のみに変更）
     db.collection("locations").onSnapshot(snapshot => {
         const buttonList = document.getElementById('button-list');
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
 
-            if (!data || !data.name || change.type === "removed") {
-                removeUserUI(id);
+            if (change.type === "removed" || !data.name) {
+                removeUser(id);
                 return;
             }
 
             const pos = [data.lat, data.lng];
+            lastSeen[id] = Date.now();
+
             if (change.type === "added" || change.type === "modified") {
-                lastUpdateTimes[id] = Date.now();
-                
                 let btn = document.getElementById('btn-' + id);
                 if (!btn) {
                     btn = document.createElement('button');
                     btn.id = 'btn-' + id;
                     btn.className = 'user-btn';
-                    btn.onclick = () => focusUser(id);
+                    btn.onclick = () => map.flyTo(markers[id].getLatLng(), 16);
                     buttonList.appendChild(btn);
                 }
                 btn.innerText = "📍 " + data.name;
 
                 if (!userPaths[id]) userPaths[id] = [];
-                userPaths[id].push({ pos: pos, time: Date.now() });
-                
-                const latlngs = userPaths[id].map(p => p.pos);
+                userPaths[id].push({pos, time: Date.now()});
                 if (pathLayers[id]) {
-                    pathLayers[id].setLatLngs(latlngs);
-                    if (latlngs.length >= 2) pathLayers[id].addTo(map);
+                    pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
                 } else {
-                    pathLayers[id] = L.polyline(latlngs, {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
+                    pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5}).addTo(map);
                 }
 
                 if (markers[id]) {
                     markers[id].setLatLng(pos).getTooltip().setContent(data.name);
                 } else {
-                    markers[id] = L.marker(pos).addTo(map)
-                        .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
+                    markers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, {permanent: true, direction: 'top', className: 'viewer-label'});
                 }
             }
         });
-    }, err => console.error("Snapshotエラー:", err));
+    });
 
-    function removeUserUI(id) {
-        const btn = document.getElementById('btn-' + id);
-        if (btn) btn.remove();
-        if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
-        if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
-        delete lastUpdateTimes[id];
-    }
+    // 生存確認（ブラウザ上でのみ消す。DBお掃除は一旦削除して安全性を優先）
+    setInterval(() => {
+        const now = Date.now();
+        for (let id in lastSeen) {
+            if (now - lastSeen[id] > 60000) removeUser(id);
+        }
+    }, 10000);
     </script>
 </body>
 </html>
