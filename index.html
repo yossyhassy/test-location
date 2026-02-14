@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（30秒足跡制限版）</title>
+    <title>現在地共有マップ（閲覧モード対応）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -32,7 +32,7 @@
     <div id="login-container">
         <div class="login-card">
             <h2>位置共有マップ</h2>
-            <input type="text" id="user-name" placeholder="名前を入力してください" maxlength="10">
+            <input type="text" id="user-name" placeholder="名前を入力（空欄で閲覧のみ）" maxlength="10">
             <button onclick="enterMap()" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">地図を始める</button>
         </div>
     </div>
@@ -67,8 +67,11 @@
     let isTracking = true;
     let showPath = true;
 
+    // 位置送信関数
     function sendLocation() {
-        if (!isTracking || !myName) return;
+        // --- 名前が空欄の場合は、Firebaseへの送信をスキップする ---
+        if (!isTracking || !myName || myName.trim() === "") return;
+
         navigator.geolocation.getCurrentPosition((position) => {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
@@ -80,10 +83,13 @@
         }, (err) => console.log(err), { enableHighAccuracy: true });
     }
 
+    // ログイン処理（名前なしでも通すように変更）
     function enterMap() {
         const nameInput = document.getElementById('user-name').value.trim();
-        if (!nameInput) { alert("名前を入力してください"); return; }
-        myName = nameInput;
+        
+        // 【変更】alertを出さず、そのまま変数に代入して進む
+        myName = nameInput; 
+        
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('controls').style.display = 'flex';
         initApp();
@@ -107,32 +113,26 @@
         sendLocation();
         trackingTimer = setInterval(sendLocation, 10000);
 
-        // --- 【更新】30秒以上前の古い足跡を消去するタイマー ---
+        // 30秒の足跡クリーナー
         setInterval(() => {
             const now = Date.now();
             for (let id in userPaths) {
-                // 30,000ミリ秒（30秒）以上前のデータを削除
                 userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
-                
                 if (pathLayers[id]) {
                     const latlngs = userPaths[id].map(p => p.pos);
                     pathLayers[id].setLatLngs(latlngs);
-                    // 座標が1つ以下になったら線を地図から一時的に消す
-                    if (latlngs.length < 2) {
-                        map.removeLayer(pathLayers[id]);
-                    } else if (showPath) {
-                        pathLayers[id].addTo(map);
-                    }
+                    if (latlngs.length < 2) map.removeLayer(pathLayers[id]);
+                    else if (showPath) pathLayers[id].addTo(map);
                 }
             }
-        }, 3000); // 3秒ごとにチェックしてスムーズに消す
+        }, 3000);
 
         db.collection("locations").onSnapshot((snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 const data = change.doc.data();
                 const id = change.doc.id;
 
-                // --- 【厳格ガード】名前が空欄ならピンも線も表示しないし、あれば消す ---
+                // 名前が空欄のユーザーは地図上に表示しない（前回のルール通り）
                 if (!data || !data.name || data.name.trim() === "") {
                     if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
                     if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
@@ -144,14 +144,12 @@
                 if (change.type === "added" || change.type === "modified") {
                     if (!userPaths[id]) userPaths[id] = [];
                     userPaths[id].push({ pos: pos, time: Date.now() });
-                    
                     const latlngs = userPaths[id].map(p => p.pos);
 
                     if (pathLayers[id]) {
                         pathLayers[id].setLatLngs(latlngs);
                     } else {
                         const color = (id === myId) ? 'blue' : 'red';
-                        // weight: 1.5 でさらに細く
                         pathLayers[id] = L.polyline(latlngs, {color: color, weight: 1.5, opacity: 0.7});
                         if (showPath && latlngs.length >= 2) pathLayers[id].addTo(map);
                     }
