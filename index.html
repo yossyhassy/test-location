@@ -3,6 +3,194 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今ここマップ by otosan</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        #login-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .login-card { background: white; padding: 30px; border-radius: 15px; text-align: center; width: 80%; max-width: 320px; }
+        input { width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        
+        #map { height: 100vh; width: 100%; visibility: hidden; }
+
+        /* 右上のコントロールUI */
+        #controls {
+            position: fixed; top: 10px; right: 10px; z-index: 1000;
+            display: none; flex-direction: column; gap: 10px;
+        }
+        .toggle-btn {
+            padding: 10px 15px; font-weight: bold; border: none; border-radius: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer; font-size: 13px;
+        }
+        .btn-on { background: #28a745; color: white; }
+        .btn-off { background: #dc3545; color: white; }
+        .btn-footprint { background: #ffc107; color: black; }
+    </style>
+</head>
+<body>
+
+    <div id="login-container">
+        <div class="login-card">
+            <h2>今ここ！マップ by otosan</h2>
+            <input type="text" id="user-name" placeholder="名前を入力してください" maxlength="10">
+            <button onclick="enterMap()" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; font-weight: bold;">地図を始める</button>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="toggle-timer" class="toggle-btn btn-on" onclick="toggleTracking()">自動更新：ON</button>
+        <button id="toggle-path" class="toggle-btn btn-footprint" onclick="togglePath()">足跡：表示中</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
+        authDomain: "my-location-app-6812a.firebaseapp.com",
+        projectId: "my-location-app-6812a",
+        storageBucket: "my-location-app-6812a.firebasestorage.app",
+        messagingSenderId: "123347808605",
+        appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let myName = "";
+    const myId = "user_" + Math.random().toString(36).substring(2, 9);
+    const markers = {};
+    let map;
+    
+    // タイマーと足跡の管理
+    let trackingTimer = null;
+    let isTracking = true;
+    let showPath = true;
+    
+    // 足跡データ（各ユーザーごとの座標リストと線のオブジェクト）
+    const userPaths = {}; // { userId: [[lat, lng], [lat, lng], ...] }
+    const pathLayers = {}; // { userId: L.polyline }
+
+    function enterMap() {
+        const nameInput = document.getElementById('user-name').value.trim();
+        if (!nameInput) { alert("名前を入力してください"); return; }
+        myName = nameInput;
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('map').style.visibility = 'visible';
+        document.getElementById('controls').style.display = 'flex';
+        initApp();
+    }
+
+    function sendLocation() {
+        navigator.geolocation.getCurrentPosition((position) => {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            db.collection("locations").doc(myId).set({
+                lat: lat, lng: lng, name: myName,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            if (!markers[myId]) { map.setView([lat, lng], 15); }
+        }, null, { enableHighAccuracy: true });
+    }
+
+    function toggleTracking() {
+        const btn = document.getElementById('toggle-timer');
+        if (isTracking) {
+            clearInterval(trackingTimer);
+            isTracking = false;
+            btn.innerText = "自動更新：OFF";
+            btn.className = "toggle-btn btn-off";
+        } else {
+            sendLocation();
+            trackingTimer = setInterval(sendLocation, 10000);
+            isTracking = true;
+            btn.innerText = "自動更新：ON";
+            btn.className = "toggle-btn btn-on";
+        }
+    }
+
+    // --- 【追加】足跡の表示/非表示を切り替える関数 ---
+    function togglePath() {
+        const btn = document.getElementById('toggle-path');
+        showPath = !showPath;
+        btn.innerText = showPath ? "足跡：表示中" : "足跡：隠す";
+        
+        // すべての足跡レイヤーの表示を切り替え
+        for (let id in pathLayers) {
+            if (showPath) {
+                pathLayers[id].addTo(map);
+            } else {
+                map.removeLayer(pathLayers[id]);
+            }
+        }
+    }
+
+    function initApp() {
+        map = L.map('map').setView([35.6895, 139.6917], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        const blueIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+        const redIcon = new L.Icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+        });
+
+        sendLocation();
+        trackingTimer = setInterval(sendLocation, 10000);
+
+        db.collection("locations").onSnapshot((snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+                const data = change.doc.data();
+                const id = change.doc.id;
+                const pos = [data.lat, data.lng];
+
+                if (change.type === "added" || change.type === "modified") {
+                    // --- 足跡データの更新 ---
+                    if (!userPaths[id]) userPaths[id] = [];
+                    userPaths[id].push(pos); // 新しい座標を追加
+
+                    // 線の更新または作成
+                    if (pathLayers[id]) {
+                        pathLayers[id].setLatLngs(userPaths[id]);
+                    } else {
+                        const color = (id === myId) ? 'blue' : 'red';
+                        pathLayers[id] = L.polyline(userPaths[id], {color: color, weight: 3, opacity: 0.6});
+                        if (showPath) pathLayers[id].addTo(map);
+                    }
+
+                    // マーカーの更新
+                    const label = data.name + (id === myId ? " (自分)" : "");
+                    if (markers[id]) {
+                        markers[id].setLatLng(pos).getPopup().setContent(label);
+                    } else {
+                        const icon = (id === myId) ? blueIcon : redIcon;
+                        markers[id] = L.marker(pos, {icon: icon}).addTo(map).bindPopup(label);
+                    }
+                }
+            });
+        });
+    }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>現在地共有マップ（10秒更新）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -125,4 +313,5 @@
     </script>
 </body>
 </html>
+
 
