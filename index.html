@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（DBクリーンアップ版）</title>
+    <title>現在地共有マップ（安定版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,10 +11,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
-        #map { height: 100vh; width: 100%; z-index: 1; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100%; z-index: 1; background: #eee; } /* 背景色をつけて読み込み中を判別 */
 
-        /* 左上の管理者追跡メニュー */
         #admin-menu {
             position: fixed; top: 10px; left: 10px;
             z-index: 2000; display: flex; flex-direction: column; gap: 8px;
@@ -27,12 +26,8 @@
         .user-btn {
             background: white; border: 2px solid #007bff; border-radius: 5px;
             padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.2s;
-            text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: left;
         }
-        .user-btn:hover { background: #f0f7ff; transform: translateX(5px); }
-
-        /* 名前ラベル（常時表示） */
         .viewer-label { 
             background: white; border: 2px solid #007bff; border-radius: 5px; 
             padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; 
@@ -49,7 +44,6 @@
     <div id="map"></div>
 
     <script>
-    // --- Firebase 設定 ---
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
         authDomain: "my-location-app-6812a.firebaseapp.com",
@@ -59,49 +53,45 @@
         appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
     };
 
-    firebase.initializeApp(firebaseConfig);
+    // Firebaseの初期化（エラー回避のためtry-catch）
+    try {
+        firebase.initializeApp(firebaseConfig);
+    } catch (e) {
+        console.error("Firebaseの初期化に失敗:", e);
+    }
     const db = firebase.firestore();
 
-    // --- 地図の初期化 ---
+    // 地図の初期化（これを最初に行うことで確実に表示させる）
     const map = L.map('map').setView([35.6895, 139.6917], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {};
     const userPaths = {}; 
     const pathLayers = {};
-    const lastUpdateTimes = {}; // ブラウザ側での生存確認用
+    const lastUpdateTimes = {};
 
-    // 選択した管理者に移動する関数
     function focusUser(id) {
-        if (markers[id]) {
-            map.flyTo(markers[id].getLatLng(), 16);
-            markers[id].openTooltip();
-        }
+        if (markers[id]) map.flyTo(markers[id].getLatLng(), 16);
     }
 
-    // --- 【新機能】データベース(Firestore)の古いゴミを消去する関数 ---
+    // DBお掃除関数（インデックス未作成でも他を止めないよう修正）
     async function cleanupDatabase() {
-        const now = new Date();
-        const threshold = new Date(now.getTime() - 60000); // 60秒前
-
         try {
-            // timestampが60秒以上前のドキュメントを取得
+            const threshold = new Date(Date.now() - 60000);
             const oldDocs = await db.collection("locations")
                 .where("timestamp", "<", threshold)
                 .get();
 
             const batch = db.batch();
-            oldDocs.forEach(doc => {
-                batch.delete(doc.ref);
-                console.log("DBから古いデータを掃除しました:", doc.id);
-            });
+            oldDocs.forEach(doc => batch.delete(doc.ref));
             await batch.commit();
         } catch (e) {
-            console.error("DBクリーンアップ失敗（権限不足の可能性があります）:", e);
+            // インデックス未作成の場合はここにエラーが出るが、無視して続行
+            console.warn("クリーンアップは現在利用できません(Index作成中など):", e.message);
         }
     }
 
-    // 足跡消去タイマー（30秒）
+    // 足跡消去
     setInterval(() => {
         const now = Date.now();
         for (let id in userPaths) {
@@ -114,28 +104,69 @@
         }
     }, 3000);
 
-    // 生存チェックタイマー（10秒ごとにUIから消去 & DBお掃除）
+    // 生存確認
     setInterval(() => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
-            if (now - lastUpdateTimes[id] > 60000) {
-                removeUserUI(id);
-                delete lastUpdateTimes[id];
-            }
+            if (now - lastUpdateTimes[id] > 60000) removeUserUI(id);
         }
-        cleanupDatabase(); // ついでにDB側の掃除も実行
+        cleanupDatabase(); 
     }, 10000);
 
-    // --- メイン監視処理 ---
+    // 監視
     db.collection("locations").onSnapshot(snapshot => {
         const buttonList = document.getElementById('button-list');
-
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
 
-            // 削除された、または名前がないデータの処理
             if (!data || !data.name || change.type === "removed") {
                 removeUserUI(id);
-                delete lastUpdateTimes[id];
-                return
+                return;
+            }
+
+            const pos = [data.lat, data.lng];
+            if (change.type === "added" || change.type === "modified") {
+                lastUpdateTimes[id] = Date.now();
+                
+                let btn = document.getElementById('btn-' + id);
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.id = 'btn-' + id;
+                    btn.className = 'user-btn';
+                    btn.onclick = () => focusUser(id);
+                    buttonList.appendChild(btn);
+                }
+                btn.innerText = "📍 " + data.name;
+
+                if (!userPaths[id]) userPaths[id] = [];
+                userPaths[id].push({ pos: pos, time: Date.now() });
+                
+                const latlngs = userPaths[id].map(p => p.pos);
+                if (pathLayers[id]) {
+                    pathLayers[id].setLatLngs(latlngs);
+                    if (latlngs.length >= 2) pathLayers[id].addTo(map);
+                } else {
+                    pathLayers[id] = L.polyline(latlngs, {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
+                }
+
+                if (markers[id]) {
+                    markers[id].setLatLng(pos).getTooltip().setContent(data.name);
+                } else {
+                    markers[id] = L.marker(pos).addTo(map)
+                        .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
+                }
+            }
+        });
+    }, err => console.error("Snapshotエラー:", err));
+
+    function removeUserUI(id) {
+        const btn = document.getElementById('btn-' + id);
+        if (btn) btn.remove();
+        if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+        if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
+        delete lastUpdateTimes[id];
+    }
+    </script>
+</body>
+</html>
