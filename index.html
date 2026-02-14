@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（追跡メニュー版）</title>
+    <title>現在地共有マップ（自動クリーンアップ版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,14 +11,13 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
         #map { height: 100vh; width: 100%; z-index: 1; }
 
-        /* --- 管理者選択ボタンのコンテナ --- */
+        /* 左上の追跡ボタンメニュー */
         #admin-menu {
             position: fixed; top: 10px; left: 10px;
-            z-index: 2000; /* 地図より絶対上に表示 */
-            display: flex; flex-direction: column; gap: 8px;
+            z-index: 2000; display: flex; flex-direction: column; gap: 8px;
             max-width: 200px;
         }
         .menu-title {
@@ -32,9 +31,8 @@
             text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .user-btn:hover { background: #f0f7ff; transform: translateX(5px); }
-        .user-btn:active { background: #007bff; color: white; }
 
-        /* 名前ラベル（地図上のピン用） */
+        /* 名前ラベル（常時表示） */
         .viewer-label { 
             background: white; border: 2px solid #007bff; border-radius: 5px; 
             padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; 
@@ -70,16 +68,14 @@
     const userPaths = {}; 
     const pathLayers = {};
 
-    // --- 指定した管理者にジャンプする関数 ---
     function focusUser(id) {
         if (markers[id]) {
-            const pos = markers[id].getLatLng();
-            map.flyTo(pos, 16, { animate: true, duration: 1.5 }); // ズームして移動
+            map.flyTo(markers[id].getLatLng(), 16);
             markers[id].openTooltip();
         }
     }
 
-    // 30秒の足跡消去
+    // 足跡消去（30秒）
     setInterval(() => {
         const now = Date.now();
         for (let id in userPaths) {
@@ -92,24 +88,35 @@
         }
     }, 3000);
 
-    // Firebaseの監視
+    // --- 監視処理（onSnapshot）ここから ---
     db.collection("locations").onSnapshot(snapshot => {
         const buttonList = document.getElementById('button-list');
-        
+        const nowServer = new Date(); // 現在時刻の取得
+
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
 
-            // 名前がない、または削除された場合
+            // 基本ガード：名前がない、または削除された場合
             if (!data || !data.name || change.type === "removed") {
                 removeUserUI(id);
                 return;
             }
 
+            // 【追加】生存確認ガード：60秒以上更新がない管理者は消去対象にする
+            if (data.timestamp) {
+                const lastSeen = data.timestamp.toDate();
+                const diff = (nowServer - lastSeen) / 1000; // 経過秒数
+                if (diff > 60) {
+                    removeUserUI(id);
+                    return;
+                }
+            }
+
             const pos = [data.lat, data.lng];
 
             if (change.type === "added" || change.type === "modified") {
-                // 1. ボタンリストの更新
+                // 1. ボタンの更新
                 let btn = document.getElementById('btn-' + id);
                 if (!btn) {
                     btn = document.createElement('button');
@@ -125,11 +132,12 @@
                 userPaths[id].push({ pos: pos, time: Date.now() });
                 if (pathLayers[id]) {
                     pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
+                    if (userPaths[id].length >= 2) pathLayers[id].addTo(map);
                 } else {
                     pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
                 }
                 
-                // 3. マーカーの表示
+                // 3. マーカーの表示（名前常時表示）
                 if (markers[id]) {
                     markers[id].setLatLng(pos).getTooltip().setContent(data.name);
                 } else {
