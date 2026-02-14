@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理者ログイン - 自動停止機能付</title>
+    <title>管理者ログイン - 確実停止版</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -21,8 +21,14 @@
         #controls { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
         
         .admin-label { background: white; border: 2px solid #28a745; border-radius: 5px; padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; }
-        /* 警告表示用 */
-        #alert-msg { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(220, 53, 69, 0.9); color: white; padding: 10px 20px; border-radius: 50px; display: none; z-index: 3000; }
+        
+        /* 警告メッセージのスタイルを強化 */
+        #alert-msg { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            background: rgba(220, 53, 69, 0.95); color: white; padding: 20px; 
+            border-radius: 10px; display: none; z-index: 3000; text-align: center;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -36,7 +42,9 @@
         </div>
     </div>
 
-    <div id="alert-msg">⚠️ 通信途絶のため自動停止します...</div>
+    <div id="alert-msg">
+        ⚠️ 通信が60秒以上途切れたため<br>自動的に配信を停止します...
+    </div>
 
     <div id="controls">
         <button onclick="stopAdmin(true)" style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">配信を終了</button>
@@ -62,8 +70,8 @@
     let map;
     let myMarker;
     let updateInterval;
-    let watchdogTimer; // 【追加】生存監視用
-    let lastSuccessTime = Date.now(); // 【追加】最後に成功した時刻
+    let watchdogTimer;
+    let lastSuccessTime = Date.now();
 
     function startAdmin() {
         myName = document.getElementById('admin-name').value.trim();
@@ -74,35 +82,46 @@
         document.getElementById('controls').style.display = 'block';
 
         initMap();
-        startWatchdog(); // 監視開始
+        startWatchdog();
     }
 
-    // --- 【重要】生存監視タイマー ---
     function startWatchdog() {
         lastSuccessTime = Date.now();
         watchdogTimer = setInterval(() => {
             const now = Date.now();
-            // 60秒間更新がなければ強制終了
             if (now - lastSuccessTime > 60000) {
+                // 警告を表示
                 document.getElementById('alert-msg').style.display = 'block';
+                // 3秒待ってからリロードへ
                 setTimeout(() => {
-                    stopAdmin(false); // 確認なしで削除実行
-                }, 2000);
+                    stopAdmin(false); 
+                }, 3000);
             }
-        }, 10000); // 10秒ごとにチェック
+        }, 5000); // チェック頻度を5秒に上げてレスポンス改善
     }
 
+    // --- 【重要】改善された停止関数 ---
     async function stopAdmin(withConfirm) {
         if (withConfirm && !confirm("配信を終了しますか？")) return;
 
+        // 全タイマーを即座に停止
         clearInterval(updateInterval);
         clearInterval(watchdogTimer);
 
+        // 🚀 強制リロードタイマー（ネットがなくても2秒後に強制終了）
+        const forceReload = setTimeout(() => {
+            console.log("削除を待たずにリロードします");
+            location.reload();
+        }, 2000);
+
         try {
+            // 削除を試みる
             await db.collection("locations").doc(myId).delete();
+            console.log("データの削除に成功");
+            clearTimeout(forceReload); // 成功した場合は即リロード
             location.reload();
         } catch (e) {
-            console.error(e);
+            console.error("削除エラー:", e);
             location.reload();
         }
     }
@@ -120,8 +139,7 @@
                     lat: lat, lng: lng, name: myName,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 }).then(() => {
-                    // 送信に成功した時刻を更新
-                    lastSuccessTime = Date.now();
+                    lastSuccessTime = Date.now(); // 送信成功時のみ時刻を更新
                 });
 
                 if (myMarker) {
@@ -131,17 +149,14 @@
                         .bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' }).openTooltip();
                     map.setView([lat, lng], 15);
                 }
-            }, (err) => console.log("GPSエラー:", err), { enableHighAccuracy: true });
+            }, (err) => {
+                console.log("GPS取得エラー（送信しません）", err);
+            }, { enableHighAccuracy: true });
         }
 
         sendLocation();
         updateInterval = setInterval(sendLocation, 10000);
     }
-
-    // タブを閉じた時の保険
-    window.addEventListener('pagehide', () => {
-        if (myId) db.collection("locations").doc(myId).delete();
-    });
     </script>
 </body>
 </html>
