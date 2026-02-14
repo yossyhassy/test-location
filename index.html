@@ -2,34 +2,100 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>現在地共有マップ（閲覧用）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>現在地共有マップ（管理者選択式）</title>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; }
-        #map { height: 100vh; width: 100%; }
-        /* 名前ラベル（常に表示）のスタイル */
-        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
+        
+        /* 全体のレイアウト */
+        #container { display: flex; height: 100vh; width: 100%; }
+        
+        /* 1. 管理者リスト（左側サイドバー） */
+        #sidebar {
+            width: 200px; background: #f8f9fa; border-right: 1px solid #ddd;
+            display: flex; flex-direction: column; z-index: 1001;
+        }
+        #sidebar h3 { font-size: 14px; padding: 15px; margin: 0; background: #eee; border-bottom: 1px solid #ddd; }
+        #user-list { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex-grow: 1; }
+        .user-item {
+            padding: 12px 15px; border-bottom: 1px solid #eee; cursor: pointer;
+            font-size: 14px; transition: background 0.2s;
+        }
+        .user-item:hover { background: #e9ecef; }
+        .user-item.active { background: #007bff; color: white; font-weight: bold; }
+
+        /* 2. 地図（右側） */
+        #map { flex-grow: 1; height: 100%; }
+
+        /* 名前ラベルのスタイル */
+        .viewer-label { 
+            background: white; border: 2px solid #007bff; border-radius: 5px; 
+            padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; 
+        }
+
+        /* スマホ対応：サイドバーを細く、または隠す設定 */
+        @media (max-width: 600px) {
+            #sidebar { width: 120px; }
+            #sidebar h3 { font-size: 12px; padding: 10px; }
+            .user-item { font-size: 12px; padding: 10px; }
+        }
     </style>
 </head>
 <body>
-    <div id="map"></div>
+
+    <div id="container">
+        <div id="sidebar">
+            <h3>配信中の管理者</h3>
+            <ul id="user-list">
+                </ul>
+        </div>
+
+        <div id="map"></div>
+    </div>
 
     <script>
-    const firebaseConfig = { /* admin.htmlと同じ設定をここに */ };
+    // --- Firebaseの設定（admin.htmlと同じ設定を貼り付けてください） ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
+        authDomain: "my-location-app-6812a.firebaseapp.com",
+        projectId: "my-location-app-6812a",
+        storageBucket: "my-location-app-6812a.firebasestorage.app",
+        messagingSenderId: "123347808605",
+        appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
+    };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
+    // 地図の初期化
     const map = L.map('map').setView([35.6895, 139.6917], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {};
     const userPaths = {}; 
     const pathLayers = {};
+    const userNames = {}; // IDと名前の紐付け用
 
-    // 足跡消去（30秒）
+    // リストから選択して移動する関数
+    function focusUser(id) {
+        if (markers[id]) {
+            const pos = markers[id].getLatLng();
+            map.panTo(pos); // その人の位置へ移動
+            markers[id].openTooltip(); // 名前を強調（あるいはポップアップを開く）
+            
+            // リストの見た目を変える
+            document.querySelectorAll('.user-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('list-' + id).classList.add('active');
+        }
+    }
+
+    // 足跡消去タイマー（30秒）
     setInterval(() => {
         const now = Date.now();
         for (let id in userPaths) {
@@ -42,34 +108,33 @@
         }
     }, 3000);
 
+    // Firebaseの監視
     db.collection("locations").onSnapshot(snapshot => {
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
-            if (!data || !data.name) return;
+
+            // 名前がない場合はリストからも地図からも消す
+            if (!data || !data.name) {
+                const listEl = document.getElementById('list-' + id);
+                if (listEl) listEl.remove();
+                if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+                return;
+            }
 
             const pos = [data.lat, data.lng];
+
             if (change.type === "added" || change.type === "modified") {
-                // 足跡
+                // 1. サイドバーリストの更新
+                let listEl = document.getElementById('list-' + id);
+                if (!listEl) {
+                    listEl = document.createElement('li');
+                    listEl.id = 'list-' + id;
+                    listEl.className = 'user-item';
+                    listEl.onclick = () => focusUser(id);
+                    document.getElementById('user-list').appendChild(listEl);
+                }
+                listEl.innerText = data.name;
+
+                // 2. 足跡
                 if (!userPaths[id]) userPaths[id] = [];
-                userPaths[id].push({ pos: pos, time: Date.now() });
-                
-                if (pathLayers[id]) {
-                    pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
-                } else {
-                    pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
-                }
-                
-                // マーカー（名前を常に表示）
-                if (markers[id]) {
-                    markers[id].setLatLng(pos).getTooltip().setContent(data.name);
-                } else {
-                    markers[id] = L.marker(pos).addTo(map)
-                        .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
-                }
-            }
-        });
-    });
-    </script>
-</body>
-</html>
