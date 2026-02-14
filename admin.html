@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置配信 - 高機能管理画面</title>
+    <title>山車位置配信 - 管理画面</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -13,7 +13,7 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; }
 
-        /* --- 巨大ログイン画面 --- */
+        /* --- 設定画面 --- */
         #login-container {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: linear-gradient(135deg, #b22222, #000);
@@ -22,76 +22,77 @@
         .login-card {
             background: white; padding: 30px; border-radius: 20px;
             text-align: center; width: 85%; max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
-        input[type="text"], input[type="file"] {
-            width: 100%; padding: 18px; margin-bottom: 15px;
+        h2 { color: #b22222; margin-bottom: 20px; font-size: 24px; }
+        
+        input[type="text"] {
+            width: 100%; padding: 18px; margin-bottom: 20px;
             border: 3px solid #ddd; border-radius: 12px;
-            box-sizing: border-box; font-size: 18px; font-weight: bold;
-        }
-        #preview-container {
-            width: 80px; height: 80px; margin: 0 auto 15px;
-            border-radius: 50%; border: 4px solid #b22222;
-            background-size: cover; background-position: center; display: none;
-        }
-        .start-btn {
-            width: 100%; padding: 20px; background: #b22222; color: white;
-            border: none; border-radius: 15px; font-size: 22px; font-weight: bold;
+            box-sizing: border-box; font-size: 20px; font-weight: bold;
         }
 
-        /* --- 配信中画面（全画面地図） --- */
+        /* 画像プレビュー枠を大きく、分かりやすく */
+        #preview-container {
+            width: 150px; height: 150px; margin: 0 auto 20px;
+            border-radius: 15px; border: 4px dashed #b22222;
+            background-color: #f9f9f9; background-size: cover; background-position: center;
+            display: flex; align-items: center; justify-content: center;
+            color: #b22222; font-size: 14px; font-weight: bold; overflow: hidden;
+        }
+
+        .file-input-wrapper { margin-bottom: 20px; }
+        input[type="file"] { font-size: 16px; width: 100%; }
+
+        .start-btn {
+            width: 100%; padding: 22px; background: #b22222; color: white;
+            border: none; border-radius: 15px; font-size: 24px; font-weight: bold;
+            cursor: pointer;
+        }
+
+        /* --- 配信中画面（全画面地図 ＋ フローティングパネル） --- */
         #admin-display { display: none; position: relative; width: 100%; height: 100vh; }
         #map { height: 100%; width: 100%; z-index: 1; }
 
-        /* --- 【新機能】フローティング管理パネル --- */
         #floating-panel {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             width: 90%; max-width: 360px; z-index: 2000;
             background: rgba(0, 0, 0, 0.85); border: 2px solid #b22222;
             border-radius: 20px; padding: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            text-align: center; color: white;
-            backdrop-filter: blur(5px);
-        }
-        #debug-info {
-            background: #000; padding: 8px; border-radius: 10px;
-            font-family: monospace; font-size: 11px; color: #0f0; margin: 10px 0;
-            text-align: left; line-height: 1.4;
+            text-align: center; color: white; backdrop-filter: blur(5px);
         }
         .stop-btn {
             width: 100%; padding: 15px; background: #dc3545; color: white;
             border: none; border-radius: 12px; font-size: 18px; font-weight: bold;
         }
-
+        
+        /* 地図上のラベルとアイコン */
         .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 4px 10px; font-weight: bold; color: #b22222; }
         .icon-circle { width: 50px; height: 50px; border-radius: 50%; background-size: cover; border: 3px solid white; }
-
-        /* 警告メッセージ */
-        #alert-msg {
-            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: #ff0000; color: white; padding: 30px; border-radius: 20px;
-            display: none; z-index: 4000; text-align: center; font-size: 20px; font-weight: bold; width: 80%;
-        }
     </style>
 </head>
 <body>
 
     <div id="login-container">
         <div class="login-card">
-            <h2 style="color:#b22222; margin-top:0;">山車配信設定</h2>
+            <h2>山車配信設定</h2>
+            
             <input type="text" id="admin-name" placeholder="山車区名（例：仲町）">
-            <div id="preview-container"></div>
-            <input type="file" id="admin-icon-file" accept="image/*">
+            
+            <div id="preview-container">画像未選択</div>
+            
+            <div class="file-input-wrapper">
+                <input type="file" id="admin-icon-file" accept="image/*">
+            </div>
+            
             <button class="start-btn" onclick="startAdmin()">配信を開始する</button>
         </div>
     </div>
 
-    <div id="alert-msg">⚠️ 25秒間通信が途絶えたため<br>データを削除して終了します</div>
-
     <div id="admin-display">
         <div id="map"></div>
-        
         <div id="floating-panel">
-            <div id="active-name" style="font-size: 20px; font-weight: bold; color: #ffc107;"></div>
-            <div id="debug-info">位置取得を待機中...</div>
+            <div id="active-name" style="font-size: 20px; font-weight: bold; color: #ffc107; margin-bottom:10px;"></div>
             <button class="stop-btn" onclick="stopAdmin(true)">配信終了（データを消す）</button>
         </div>
     </div>
@@ -109,119 +110,112 @@
     const db = firebase.firestore();
 
     let myName = "";
-    let myIconData = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
+    let myIconData = ""; 
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map, myMarker, updateInterval, watchdogTimer;
     let lastSuccessTime = Date.now();
 
-    // LocalStorage復元
+    // ページ読み込み時に LocalStorage から復元
     window.onload = () => {
-        const n = localStorage.getItem('dashi_name');
-        const i = localStorage.getItem('dashi_icon');
-        if (n) document.getElementById('admin-name').value = n;
-        if (i) { 
-            myIconData = i; 
-            const p = document.getElementById('preview-container');
-            p.style.backgroundImage = `url(${i})`; p.style.display = 'block'; 
+        const savedName = localStorage.getItem('dashi_name');
+        const savedIcon = localStorage.getItem('dashi_icon');
+        if (savedName) document.getElementById('admin-name').value = savedName;
+        if (savedIcon) {
+            myIconData = savedIcon;
+            updatePreview(savedIcon);
         }
     };
 
-    // 写真選択
+    // ファイルが選択された時の処理
     document.getElementById('admin-icon-file').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
+
         const reader = new FileReader();
         reader.onload = function(event) {
-            myIconData = event.target.result;
-            localStorage.setItem('dashi_icon', myIconData);
-            const p = document.getElementById('preview-container');
-            p.style.backgroundImage = `url(${myIconData})`; p.style.display = 'block';
+            const base64Data = event.target.result;
+            myIconData = base64Data;
+            
+            // プレビュー表示
+            updatePreview(base64Data);
+            
+            // LocalStorage に保存
+            localStorage.setItem('dashi_icon', base64Data);
         };
         reader.readAsDataURL(file);
     });
 
+    function updatePreview(url) {
+        const preview = document.getElementById('preview-container');
+        preview.style.backgroundImage = `url(${url})`;
+        preview.innerText = ""; // 文字を消す
+        preview.style.borderStyle = "solid"; // 点線を実線に
+    }
+
     function startAdmin() {
         myName = document.getElementById('admin-name').value.trim();
         if (!myName) return alert("山車区名を入力してください");
+        
         localStorage.setItem('dashi_name', myName);
+
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('admin-display').style.display = 'block';
-        document.getElementById('active-name').innerText = myName;
+        document.getElementById('active-name').innerText = "配信中: " + myName;
+
         initMap();
         startWatchdog();
     }
 
-    // --- 【重要】生存監視タイマー ---
+    // 25秒タイムアウト監視
     function startWatchdog() {
         lastSuccessTime = Date.now();
         watchdogTimer = setInterval(() => {
             if (Date.now() - lastSuccessTime > 25000) {
-                document.getElementById('alert-msg').style.display = 'block';
-                // タイムアウト時もDBから削除してリロード
-                setTimeout(() => stopAdmin(false), 3000);
+                alert("通信が途切れたため、配信を自動終了します。");
+                stopAdmin(false);
             }
         }, 5000);
     }
 
-    // --- 【重要】終了およびDB削除処理 ---
     async function stopAdmin(withConfirm) {
         if (withConfirm && !confirm("配信を終了し、地図からデータを削除しますか？")) return;
-
         clearInterval(updateInterval);
         clearInterval(watchdogTimer);
-
-        // 強制終了タイマー
-        const force = setTimeout(() => { location.reload(); }, 2000);
-
         try {
-            // Firestoreから自分のドキュメントを削除
             await db.collection("locations").doc(myId).delete();
-            console.log("DB削除成功");
             location.reload();
-        } catch (e) {
-            console.error("削除エラー:", e);
-            location.reload();
-        }
+        } catch (e) { location.reload(); }
     }
 
     function initMap() {
-        // 初期位置（富岡市役所付近）
+        // 現在地からスタート
         map = L.map('map', { zoomControl: false }).setView([36.2598, 138.8900], 17);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         function sendLocation() {
-            const debug = document.getElementById('debug-info');
-            
             navigator.geolocation.getCurrentPosition((pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
-                const accuracy = Math.round(pos.coords.accuracy);
 
                 db.collection("locations").doc(myId).set({
                     lat: lat, lng: lng, name: myName, icon: myIconData,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }).then(() => {
-                    lastSuccessTime = Date.now();
-                    debug.innerHTML = `GPS: 良好 (${accuracy}m)<br>最終送信: ${new Date().toLocaleTimeString()} ✅<br>状態: 送信中...`;
-                }).catch(e => {
-                    debug.innerHTML = `通信エラー: ${e.message} ❌`;
+                }).then(() => { lastSuccessTime = Date.now(); });
+
+                const customIcon = L.divIcon({ 
+                    className: 'custom-icon', 
+                    html: `<div class="icon-circle" style="background-image: url(${myIconData || 'https://cdn-icons-png.flaticon.com/512/3135/3135715.png'});"></div>`, 
+                    iconSize: [50, 50], iconAnchor: [25, 25] 
                 });
 
                 if (myMarker) {
                     myMarker.setLatLng([lat, lng]);
                 } else {
-                    const customIcon = L.divIcon({ 
-                        className: 'custom-icon', 
-                        html: `<div class="icon-circle" style="background-image: url(${myIconData});"></div>`, 
-                        iconSize: [50, 50], iconAnchor: [25, 25] 
-                    });
                     myMarker = L.marker([lat, lng], {icon: customIcon}).addTo(map)
                         .bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
                     map.setView([lat, lng], 17);
                 }
-            }, (err) => {
-                debug.innerHTML = `GPS取得失敗: コード ${err.code} ❌<br>※25秒経つと自動終了します`;
-            }, { enableHighAccuracy: true, timeout: 8000 });
+            }, (err) => console.log(err), { enableHighAccuracy: true });
         }
         sendLocation();
         updateInterval = setInterval(sendLocation, 10000);
