@@ -118,6 +118,22 @@
         sendLocation();
         updateInterval = setInterval(sendLocation, 10000); // タイマーを変数に格納
     }
+   // --- タブを閉じたり、アプリを離れた時に自動で削除を試みる ---
+window.addEventListener('pagehide', () => {
+    // 削除処理を呼び出す。確認ダイアログなしで実行するために少し工夫
+    if (myId) {
+        // 注意: 非同期処理なので、ブラウザが閉じるまでに間に合わないこともあります
+        db.collection("locations").doc(myId).delete();
+    }
+    });
+
+    // スマホで「戻る」ボタンなどを押した時用
+    window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            // バックグラウンドに回った時にも削除したい場合はここに記述
+            // （ただし、意図せず消えるのを防ぐため、通常は pagehide だけでOK）
+        }
+    });
     </script>
 </body>
 </html>
