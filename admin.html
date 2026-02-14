@@ -2,66 +2,121 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>管理者ログイン - 位置共有</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者ログイン - 位置配信</title>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
-        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #333; display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        
+        /* ログイン画面 */
+        #login-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #333; display: flex; justify-content: center; align-items: center; z-index: 2000;
+        }
         .login-card { background: white; padding: 30px; border-radius: 10px; text-align: center; }
-        input { padding: 10px; width: 200px; margin-bottom: 10px; border-radius: 5px; border: 1px solid #ddd; }
-        button { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        #map { height: 100vh; width: 100%; visibility: hidden; }
+        input { padding: 12px; width: 220px; margin-bottom: 15px; border-radius: 5px; border: 1px solid #ddd; font-size: 16px; }
+        button { padding: 12px 25px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        /* 地図画面 */
+        #map { height: 100vh; width: 100%; display: none; } /* 最初は消しておく */
+
         #controls { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; }
+        
+        /* 名前ラベル（常に表示）のスタイル */
+        .admin-label {
+            background: white; border: 2px solid #28a745; border-radius: 5px;
+            padding: 2px 8px; font-weight: bold; white-space: nowrap;
+        }
     </style>
 </head>
 <body>
+
     <div id="login-container">
         <div class="login-card">
-            <h2>管理者用ログイン</h2>
-            <input type="text" id="admin-name" placeholder="管理者名を入力">
+            <h2>管理者用 配信開始</h2>
+            <input type="text" id="admin-name" placeholder="管理者の名前を入力">
             <br>
-            <button onclick="startAdmin()">配信開始</button>
+            <button onclick="startAdmin()">配信を開始する</button>
         </div>
     </div>
-    <div id="controls"><button onclick="location.reload()">ログアウト</button></div>
+
+    <div id="controls">
+        <button onclick="location.reload()" style="padding: 10px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">配信を終了</button>
+    </div>
+
     <div id="map"></div>
 
     <script>
-    const firebaseConfig = { /* 同じ設定をここに */ };
+    // 1. Firebaseの設定
+    const firebaseConfig = {
+        apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
+        authDomain: "my-location-app-6812a.firebaseapp.com",
+        projectId: "my-location-app-6812a",
+        storageBucket: "my-location-app-6812a.firebasestorage.app",
+        messagingSenderId: "123347808605",
+        appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
+    };
+
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
     let myName = "";
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map;
+    let myMarker;
 
+    // 2. 配信開始ボタンが押された時の処理
     function startAdmin() {
         myName = document.getElementById('admin-name').value.trim();
-        if (!myName) return alert("名前が必要です");
+        if (!myName) { alert("配信用の名前を入力してください"); return; }
+
+        // ログイン画面を隠して地図を表示
         document.getElementById('login-container').style.display = 'none';
-        document.getElementById('map').style.visibility = 'visible';
+        document.getElementById('map').style.display = 'block';
         document.getElementById('controls').style.display = 'block';
+
         initMap();
     }
 
     function initMap() {
+        // 地図の初期化（一度だけ実行）
+        if (map) return;
         map = L.map('map').setView([35.6895, 139.6917], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // 10秒ごとに送信
-        setInterval(() => {
-            navigator.geolocation.getCurrentPosition(pos => {
+        // 位置情報を取得して送信するループ（10秒おき）
+        function sendLocation() {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+
+                // Firebaseへ名前付きで送信
                 db.collection("locations").doc(myId).set({
-                    lat: pos.coords.latitude,
-                    lng: pos.coords.longitude,
+                    lat: lat,
+                    lng: lng,
                     name: myName,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
-            });
-        }, 10000);
+
+                // 自分の現在地を地図に表示（常に名前を表示する設定）
+                if (myMarker) {
+                    myMarker.setLatLng([lat, lng]);
+                } else {
+                    myMarker = L.marker([lat, lng]).addTo(map);
+                    // 【ポイント】bindTooltip を permanent: true にすると常に名前が出る
+                    myMarker.bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' }).openTooltip();
+                    map.setView([lat, lng], 15);
+                }
+            }, (err) => console.log(err), { enableHighAccuracy: true });
+        }
+
+        sendLocation();
+        setInterval(sendLocation, 10000);
     }
     </script>
 </body>
