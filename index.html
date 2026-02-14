@@ -48,7 +48,7 @@
     const markers = {};
     const userPaths = {}; 
     const pathLayers = {};
-    const lastUpdateTimes = {}; // 【重要】各管理者の最新更新時刻を記録する
+    const lastUpdateTimes = {}; 
 
     function focusUser(id) {
         if (markers[id]) {
@@ -57,18 +57,28 @@
         }
     }
 
-    // --- 【改善点】10秒ごとに「全員」の生存をチェックする専用タイマー ---
+    // --- 【重要】DBからも物理的に削除する命令 ---
+    async function deleteFromDB(id) {
+        try {
+            await db.collection("locations").doc(id).delete();
+            console.log("DBからも削除完了:", id);
+        } catch (e) {
+            console.warn("DB削除に失敗（他者が既に消した可能性あり）");
+        }
+    }
+
+    // 10秒おきの生存チェック
     setInterval(() => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
-            // 60秒以上更新がない場合
             if (now - lastUpdateTimes[id] > 60000) {
-                console.log(id + " は60秒以上更新がないため削除します");
+                console.log(id + " は60秒以上更新がないためUIとDBから削除します");
                 removeUserUI(id);
+                deleteFromDB(id); // ★ここでDBからも消す
                 delete lastUpdateTimes[id];
             }
         }
-    }, 10000); // 10秒おきに見回り
+    }, 10000);
 
     // 足跡消去タイマー（30秒）
     setInterval(() => {
@@ -100,7 +110,6 @@
             const pos = [data.lat, data.lng];
 
             if (change.type === "added" || change.type === "modified") {
-                // 【重要】更新時刻をJavaScript側でも記録する
                 lastUpdateTimes[id] = Date.now();
 
                 // 1. ボタン更新
