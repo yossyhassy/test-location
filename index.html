@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（閲覧・選択用）</title>
+    <title>現在地共有マップ（追跡メニュー版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,22 +11,30 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Helvetica Neue', Arial, sans-serif; }
         #map { height: 100vh; width: 100%; z-index: 1; }
 
-        /* --- 【改良】画面上部に浮かぶ選択メニュー --- */
-        #admin-selector-container {
-            position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; background: white; padding: 10px;
-            border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            display: flex; align-items: center; gap: 10px; min-width: 250px;
+        /* --- 管理者選択ボタンのコンテナ --- */
+        #admin-menu {
+            position: fixed; top: 10px; left: 10px;
+            z-index: 2000; /* 地図より絶対上に表示 */
+            display: flex; flex-direction: column; gap: 8px;
+            max-width: 200px;
         }
-        select {
-            flex-grow: 1; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px;
+        .menu-title {
+            background: #333; color: white; padding: 8px 12px;
+            font-size: 12px; border-radius: 5px; font-weight: bold; text-align: center;
         }
-        .label-text { font-size: 12px; font-weight: bold; color: #555; white-space: nowrap; }
+        .user-btn {
+            background: white; border: 2px solid #007bff; border-radius: 5px;
+            padding: 10px; font-size: 14px; font-weight: bold; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: 0.2s;
+            text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .user-btn:hover { background: #f0f7ff; transform: translateX(5px); }
+        .user-btn:active { background: #007bff; color: white; }
 
-        /* 名前ラベル（常に表示） */
+        /* 名前ラベル（地図上のピン用） */
         .viewer-label { 
             background: white; border: 2px solid #007bff; border-radius: 5px; 
             padding: 2px 8px; font-weight: bold; white-space: nowrap; color: #333; 
@@ -35,11 +43,9 @@
 </head>
 <body>
 
-    <div id="admin-selector-container">
-        <span class="label-text">管理者を追跡：</span>
-        <select id="user-select" onchange="focusUser(this.value)">
-            <option value="">-- 選択してください --</option>
-        </select>
+    <div id="admin-menu">
+        <div class="menu-title">管理者を追跡</div>
+        <div id="button-list"></div>
     </div>
 
     <div id="map"></div>
@@ -64,11 +70,11 @@
     const userPaths = {}; 
     const pathLayers = {};
 
-    // --- 選択したユーザーにジャンプする関数 ---
+    // --- 指定した管理者にジャンプする関数 ---
     function focusUser(id) {
-        if (id && markers[id]) {
+        if (markers[id]) {
             const pos = markers[id].getLatLng();
-            map.flyTo(pos, 17); // スーッと移動してズーム
+            map.flyTo(pos, 16, { animate: true, duration: 1.5 }); // ズームして移動
             markers[id].openTooltip();
         }
     }
@@ -88,31 +94,33 @@
 
     // Firebaseの監視
     db.collection("locations").onSnapshot(snapshot => {
-        const selectBox = document.getElementById('user-select');
+        const buttonList = document.getElementById('button-list');
         
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
 
-            if (!data || !data.name) {
-                // 名前が消えたらメニューからも削除
-                removeUser(id);
+            // 名前がない、または削除された場合
+            if (!data || !data.name || change.type === "removed") {
+                removeUserUI(id);
                 return;
             }
 
             const pos = [data.lat, data.lng];
 
             if (change.type === "added" || change.type === "modified") {
-                // 1. セレクトボックス（メニュー）の更新
-                let option = document.querySelector(`option[value="${id}"]`);
-                if (!option) {
-                    option = document.createElement('option');
-                    option.value = id;
-                    selectBox.appendChild(option);
+                // 1. ボタンリストの更新
+                let btn = document.getElementById('btn-' + id);
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.id = 'btn-' + id;
+                    btn.className = 'user-btn';
+                    btn.onclick = () => focusUser(id);
+                    buttonList.appendChild(btn);
                 }
-                option.text = data.name;
+                btn.innerText = "📍 " + data.name;
 
-                // 2. 足跡
+                // 2. 足跡の描画
                 if (!userPaths[id]) userPaths[id] = [];
                 userPaths[id].push({ pos: pos, time: Date.now() });
                 if (pathLayers[id]) {
@@ -121,7 +129,7 @@
                     pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
                 }
                 
-                // 3. マーカー（名前常時表示）
+                // 3. マーカーの表示
                 if (markers[id]) {
                     markers[id].setLatLng(pos).getTooltip().setContent(data.name);
                 } else {
@@ -129,16 +137,12 @@
                         .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
                 }
             }
-
-            if (change.type === "removed") {
-                removeUser(id);
-            }
         });
     });
 
-    function removeUser(id) {
-        const option = document.querySelector(`option[value="${id}"]`);
-        if (option) option.remove();
+    function removeUserUI(id) {
+        const btn = document.getElementById('btn-' + id);
+        if (btn) btn.remove();
         if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
         if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
     }
