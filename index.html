@@ -13,6 +13,15 @@
     <style>
         body { margin: 0; padding: 0; }
         #map { height: 100vh; width: 100%; }
+        /* 名前ラベルを見やすくするスタイル */
+        .name-label {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid #666;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -33,24 +42,41 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     
+    // --- 【追加】URLから名前を取得する設定 ---
+    const urlParams = new URLSearchParams(window.location.search);
+    const userName = urlParams.get('name') || "匿名ユーザー"; 
+    // ---------------------------------------
+
     // 2. 地図の初期化
     const map = L.map('map').setView([35.6895, 139.6917], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
     }).addTo(map);
 
-    // 3. 自分と他人のマーカーを管理する「箱」
+    // --- 【追加】アイコンの色の定義 ---
+    const blueIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+    });
+
+    const redIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+    });
+    // ------------------------------
+
     const markers = {}; 
     const myId = "user_" + Math.random().toString(36).substring(2, 9);
 
-    // 4. 自分の位置が見つかった時の処理
     function onLocationFound(e) {
         const latlng = e.latlng;
-
-        // Firebaseへ送信
+        // Firebaseへ送信（nameも一緒に送るように変更）
         db.collection("locations").doc(myId).set({
             lat: latlng.lat,
             lng: latlng.lng,
+            name: userName, 
             timestamp: firebase.firestore.FieldValue.serverTimestamp()
         });
     }
@@ -62,23 +88,27 @@
     map.on('locationfound', onLocationFound);
     map.on('locationerror', onLocationError);
 
-    // 位置追跡を開始
-    map.locate({setView: true, maxZoom: 16, watch: true});
+    // スマホでの取得精度を上げるためのオプション
+    map.locate({setView: true, maxZoom: 16, watch: true, enableHighAccuracy: true});
 
-    // 5. 【追加】Firebaseを監視して、全員のマーカーを描画する
+    // 5. Firebaseを監視して、全員のマーカーを描画
     db.collection("locations").onSnapshot((snapshot) => {
         snapshot.docChanges().forEach((change) => {
             const data = change.doc.data();
             const id = change.doc.id;
 
             if (change.type === "added" || change.type === "modified") {
-                // すでにマーカーがあれば移動、なければ新しく作る
+                const displayName = data.name || "不明なユーザー";
+                
                 if (markers[id]) {
                     markers[id].setLatLng([data.lat, data.lng]);
+                    markers[id].getPopup().setContent(displayName + (id === myId ? "（自分）" : ""));
                 } else {
-                    const markerColor = (id === myId) ? "blue" : "red";
-                    markers[id] = L.marker([data.lat, data.lng]).addTo(map)
-                        .bindPopup(id === myId ? "自分" : "他のユーザー");
+                    // 自分の場合は青、他人の場合は赤のアイコンを使う
+                    const iconStyle = (id === myId) ? blueIcon : redIcon;
+                    
+                    markers[id] = L.marker([data.lat, data.lng], {icon: iconStyle}).addTo(map)
+                        .bindPopup(displayName + (id === myId ? "（自分）" : ""));
                 }
             }
         });
