@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（足跡60秒制限版）</title>
+    <title>現在地共有マップ（30秒足跡制限版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -60,7 +60,7 @@
     let myName = "";
     const myId = "user_" + Math.random().toString(36).substring(2, 9);
     const markers = {};
-    const userPaths = {}; // 座標と時刻を保持 { id: [{pos: [lat, lng], time: 12345}, ...] }
+    const userPaths = {}; 
     const pathLayers = {};
     let map;
     let trackingTimer = null;
@@ -107,34 +107,42 @@
         sendLocation();
         trackingTimer = setInterval(sendLocation, 10000);
 
-        // --- 古い足跡を消去するための監視用タイマー ---
+        // --- 【更新】30秒以上前の古い足跡を消去するタイマー ---
         setInterval(() => {
             const now = Date.now();
             for (let id in userPaths) {
-                // 60,000ミリ秒（60秒）以上前のデータを削除
-                userPaths[id] = userPaths[id].filter(p => (now - p.time) < 60000);
+                // 30,000ミリ秒（30秒）以上前のデータを削除
+                userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
                 
-                // 地図上の線を更新
                 if (pathLayers[id]) {
                     const latlngs = userPaths[id].map(p => p.pos);
                     pathLayers[id].setLatLngs(latlngs);
+                    // 座標が1つ以下になったら線を地図から一時的に消す
+                    if (latlngs.length < 2) {
+                        map.removeLayer(pathLayers[id]);
+                    } else if (showPath) {
+                        pathLayers[id].addTo(map);
+                    }
                 }
             }
-        }, 5000); // 5秒ごとに古いデータがないかチェック
+        }, 3000); // 3秒ごとにチェックしてスムーズに消す
 
         db.collection("locations").onSnapshot((snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 const data = change.doc.data();
                 const id = change.doc.id;
 
-                if (!data || !data.name || data.name.trim() === "") return;
+                // --- 【厳格ガード】名前が空欄ならピンも線も表示しないし、あれば消す ---
+                if (!data || !data.name || data.name.trim() === "") {
+                    if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+                    if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
+                    return; 
+                }
 
                 const pos = [data.lat, data.lng];
 
                 if (change.type === "added" || change.type === "modified") {
                     if (!userPaths[id]) userPaths[id] = [];
-                    
-                    // 時刻付きで保存
                     userPaths[id].push({ pos: pos, time: Date.now() });
                     
                     const latlngs = userPaths[id].map(p => p.pos);
@@ -143,9 +151,9 @@
                         pathLayers[id].setLatLngs(latlngs);
                     } else {
                         const color = (id === myId) ? 'blue' : 'red';
-                        // weight: 2 にして線を細く設定
-                        pathLayers[id] = L.polyline(latlngs, {color: color, weight: 2, opacity: 0.8});
-                        if (showPath) pathLayers[id].addTo(map);
+                        // weight: 1.5 でさらに細く
+                        pathLayers[id] = L.polyline(latlngs, {color: color, weight: 1.5, opacity: 0.7});
+                        if (showPath && latlngs.length >= 2) pathLayers[id].addTo(map);
                     }
 
                     const label = data.name + (id === myId ? " (自分)" : "");
@@ -179,7 +187,7 @@
         showPath = !showPath;
         btn.innerText = showPath ? "足跡：表示中" : "足跡：隠す";
         for (let id in pathLayers) {
-            if (showPath) pathLayers[id].addTo(map);
+            if (showPath && userPaths[id].length >= 2) pathLayers[id].addTo(map);
             else map.removeLayer(pathLayers[id]);
         }
     }
