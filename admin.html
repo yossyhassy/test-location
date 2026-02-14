@@ -3,98 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置配信 - 記憶機能付</title>
-
+    <title>山車位置配信 - 診断機能付</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; color: white; }
-
-        /* --- ログイン画面 --- */
-        #login-container {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #b22222, #000);
-            display: flex; justify-content: center; align-items: center; z-index: 2000;
-        }
-        .login-card {
-            background: white; padding: 40px 30px; border-radius: 20px;
-            text-align: center; width: 90%; max-width: 420px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
-        }
-        h2 { font-size: 26px; margin-bottom: 25px; color: #b22222; font-weight: bold; }
+        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #b22222, #000); display: flex; justify-content: center; align-items: center; z-index: 2000; }
+        .login-card { background: white; padding: 30px; border-radius: 20px; text-align: center; width: 90%; max-width: 420px; }
+        input[type="text"], input[type="file"] { width: 100%; padding: 18px; margin-bottom: 15px; border: 3px solid #ddd; border-radius: 12px; box-sizing: border-box; font-size: 20px; font-weight: bold; }
+        #preview-container { width: 80px; height: 80px; margin: 0 auto 15px; border-radius: 50%; border: 4px solid #b22222; background: #eee; background-size: cover; background-position: center; display: none; }
+        .start-btn { width: 100%; padding: 20px; background: #b22222; color: white; border: none; border-radius: 15px; font-size: 24px; font-weight: bold; cursor: pointer; }
         
-        input[type="text"], input[type="file"] {
-            width: 100%; padding: 22px; margin-bottom: 20px;
-            border: 3px solid #ddd; border-radius: 12px;
-            box-sizing: border-box; font-size: 22px; font-weight: bold;
-        }
-        
-        .file-label { display: block; margin-bottom: 10px; font-weight: bold; color: #555; font-size: 16px; }
-
-        #preview-container {
-            width: 100px; height: 100px; margin: 0 auto 20px;
-            border-radius: 50%; border: 5px solid #b22222;
-            background: #eee; background-size: cover; background-position: center; display: none;
-        }
-
-        .start-btn {
-            width: 100%; padding: 25px; background: #b22222; color: white;
-            border: none; border-radius: 15px; font-size: 26px; font-weight: bold;
-            cursor: pointer; box-shadow: 0 8px 15px rgba(178, 34, 34, 0.4);
-        }
-
-        /* --- 【変更】配信中のレイアウト --- */
         #admin-display { display: none; flex-direction: column; height: 100vh; }
+        #map { height: 50vh; width: 100%; } /* 地図をさらに少し小さく調整 */
+        #info-panel { flex-grow: 1; background: #222; padding: 15px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; border-top: 5px solid #b22222; }
         
-        /* 地図を少し小さく（画面の60%） */
-        #map { height: 60vh; width: 100%; }
-
-        /* 下部に情報を表示するエリア */
-        #info-panel {
-            flex-grow: 1; background: #222; padding: 20px;
-            display: flex; flex-direction: column; align-items: center; justify-content: space-around;
-            border-top: 5px solid #b22222;
-        }
-        .status-text { font-size: 20px; font-weight: bold; color: #ffc107; }
-        .stop-btn {
-            width: 80%; padding: 20px; background: #dc3545; color: white;
-            border: none; border-radius: 15px; font-size: 20px; font-weight: bold;
-        }
-
-        .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 4px 10px; font-weight: bold; font-size: 18px; color: #b22222; }
-        .custom-icon { background: none; border: none; }
-        .icon-circle {
-            width: 50px; height: 50px; border-radius: 50%;
-            background-size: cover; background-position: center;
-            border: 3px solid white; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-        }
-
-        #alert-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #ff0000; color: white; padding: 30px; border-radius: 15px; display: none; z-index: 3000; text-align: center; font-size: 22px; font-weight: bold; width: 85%; }
+        /* デバッグ情報表示 */
+        #debug-info { width: 100%; background: #000; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 12px; color: #0f0; margin-bottom: 10px; }
+        .stop-btn { width: 90%; padding: 18px; background: #dc3545; color: white; border: none; border-radius: 15px; font-size: 18px; font-weight: bold; }
+        
+        .admin-label { background: white; border: 2px solid #b22222; border-radius: 5px; padding: 4px 10px; font-weight: bold; color: #b22222; }
+        .icon-circle { width: 50px; height: 50px; border-radius: 50%; background-size: cover; background-position: center; border: 3px solid white; }
+        #alert-msg { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #ff0000; color: white; padding: 30px; border-radius: 15px; display: none; z-index: 3000; text-align: center; font-size: 20px; font-weight: bold; width: 80%; }
     </style>
 </head>
 <body>
 
     <div id="login-container">
         <div class="login-card">
-            <h2>山車位置 配信設定</h2>
-            <input type="text" id="admin-name" placeholder="山車区名（例：仲町）">
-            <span class="file-label">▼ アイコン写真を選択（保存されます）</span>
+            <h2 style="color:#b22222">山車配信設定</h2>
+            <input type="text" id="admin-name" placeholder="山車区名を入力">
             <div id="preview-container"></div>
             <input type="file" id="admin-icon-file" accept="image/*">
             <button class="start-btn" onclick="startAdmin()">配信を開始する</button>
         </div>
     </div>
 
-    <div id="alert-msg">⚠️ 通信途絶のため<br>自動停止しました</div>
+    <div id="alert-msg">⚠️ 通信途絶のため停止しました<br>再読み込みしてください</div>
 
     <div id="admin-display">
         <div id="map"></div>
         <div id="info-panel">
-            <div id="active-name" style="font-size: 28px; font-weight: bold;"></div>
-            <div class="status-text">🛰️ 位置情報を送信中...</div>
+            <div id="active-name" style="font-size: 24px; font-weight: bold;"></div>
+            <div id="debug-info">
+                GPS状態: 待機中...<br>
+                最終送信: なし
+            </div>
             <button class="stop-btn" onclick="stopAdmin(true)">配信を終了する</button>
         </div>
     </div>
@@ -108,7 +64,6 @@
         messagingSenderId: "123347808605",
         appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
     };
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
@@ -118,35 +73,23 @@
     let map, myMarker, updateInterval, watchdogTimer;
     let lastSuccessTime = Date.now();
 
-    // --- 【新機能】ページ読み込み時に保存された情報を復元 ---
     window.onload = () => {
-        const savedName = localStorage.getItem('dashi_name');
-        const savedIcon = localStorage.getItem('dashi_icon');
-        
-        if (savedName) {
-            document.getElementById('admin-name').value = savedName;
-        }
-        if (savedIcon) {
-            myIconData = savedIcon;
-            const preview = document.getElementById('preview-container');
-            preview.style.backgroundImage = `url(${savedIcon})`;
-            preview.style.display = 'block';
-        }
+        const n = localStorage.getItem('dashi_name');
+        const i = localStorage.getItem('dashi_icon');
+        if (n) document.getElementById('admin-name').value = n;
+        if (i) { myIconData = i; const p = document.getElementById('preview-container'); p.style.backgroundImage = `url(${i})`; p.style.display = 'block'; }
     };
 
-    // 写真プレビュー＆保存
     document.getElementById('admin-icon-file').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = function(event) {
             myIconData = event.target.result;
-            // ローカルストレージに保存
             localStorage.setItem('dashi_icon', myIconData);
-            
-            const preview = document.getElementById('preview-container');
-            preview.style.backgroundImage = `url(${myIconData})`;
-            preview.style.display = 'block';
+            const p = document.getElementById('preview-container');
+            p.style.backgroundImage = `url(${myIconData})`;
+            p.style.display = 'block';
         };
         reader.readAsDataURL(file);
     });
@@ -154,19 +97,14 @@
     function startAdmin() {
         myName = document.getElementById('admin-name').value.trim();
         if (!myName) return alert("山車区名を入力してください");
-
-        // 名前をローカルストレージに保存
         localStorage.setItem('dashi_name', myName);
-
         document.getElementById('login-container').style.display = 'none';
         document.getElementById('admin-display').style.display = 'flex';
-        document.getElementById('active-name').innerText = "【" + myName + "】";
-
+        document.getElementById('active-name').innerText = "【" + myName + "】配信中";
         initMap();
         startWatchdog();
     }
 
-    // 監視タイマー
     function startWatchdog() {
         lastSuccessTime = Date.now();
         watchdogTimer = setInterval(() => {
@@ -181,11 +119,8 @@
         if (withConfirm && !confirm("配信を終了しますか？")) return;
         clearInterval(updateInterval);
         clearInterval(watchdogTimer);
-        const force = setTimeout(() => { location.reload(); }, 2000);
-        try {
-            await db.collection("locations").doc(myId).delete();
-            location.reload();
-        } catch (e) { location.reload(); }
+        setTimeout(() => { location.reload(); }, 2000);
+        try { await db.collection("locations").doc(myId).delete(); location.reload(); } catch (e) { location.reload(); }
     }
 
     function initMap() {
@@ -193,29 +128,46 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         function sendLocation() {
+            const debug = document.getElementById('debug-info');
+            
+            // GPS取得開始
             navigator.geolocation.getCurrentPosition((pos) => {
                 const lat = pos.coords.latitude;
                 const lng = pos.coords.longitude;
+                const accuracy = Math.round(pos.coords.accuracy);
 
+                // Firestore送信
                 db.collection("locations").doc(myId).set({
                     lat: lat, lng: lng, name: myName, icon: myIconData,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                }).then(() => { lastSuccessTime = Date.now(); });
-
-                const customIcon = L.divIcon({
-                    className: 'custom-icon',
-                    html: `<div class="icon-circle" style="background-image: url(${myIconData});"></div>`,
-                    iconSize: [50, 50], iconAnchor: [25, 25]
+                }).then(() => {
+                    lastSuccessTime = Date.now();
+                    const timeStr = new Date().toLocaleTimeString();
+                    debug.innerHTML = `GPS状態: 良好 (精度: ${accuracy}m)<br>最終送信: ${timeStr} ✅`;
+                }).catch(e => {
+                    debug.innerHTML = `通信エラー: ${e.message} ❌`;
                 });
 
                 if (myMarker) {
                     myMarker.setLatLng([lat, lng]);
                 } else {
-                    myMarker = L.marker([lat, lng], {icon: customIcon}).addTo(map)
-                        .bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
+                    const customIcon = L.divIcon({ className: 'custom-icon', html: `<div class="icon-circle" style="background-image: url(${myIconData});"></div>`, iconSize: [50, 50], iconAnchor: [25, 25] });
+                    myMarker = L.marker([lat, lng], {icon: customIcon}).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
                     map.setView([lat, lng], 17);
                 }
-            }, (err) => console.log(err), { enableHighAccuracy: true });
+            }, (err) => {
+                let msg = "";
+                switch(err.code) {
+                    case 1: msg = "位置情報の許可が拒否されました"; break;
+                    case 2: msg = "位置が特定できません"; break;
+                    case 3: msg = "タイムアウトしました"; break;
+                }
+                debug.innerHTML = `GPSエラー: ${msg} (コード:${err.code}) ❌`;
+            }, { 
+                enableHighAccuracy: true, // 高精度
+                timeout: 8000,            // 8秒待ってダメなら次へ
+                maximumAge: 0 
+            });
         }
         sendLocation();
         updateInterval = setInterval(sendLocation, 10000);
