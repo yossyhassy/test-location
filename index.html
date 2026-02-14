@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>現在地共有マップ（閲覧モード対応）</title>
+    <title>現在地共有マップ（閲覧用）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -12,39 +12,23 @@
 
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
-        #login-container {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            display: flex; justify-content: center; align-items: center; z-index: 2000;
+        #map { height: 100vh; width: 100%; }
+        /* 右上のステータス表示 */
+        #status {
+            position: fixed; top: 10px; right: 10px; z-index: 1000;
+            background: rgba(255, 255, 255, 0.8); padding: 5px 10px;
+            border-radius: 5px; font-size: 12px; font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
-        .login-card { background: white; padding: 30px; border-radius: 15px; text-align: center; width: 80%; max-width: 320px; }
-        input { width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        #map { height: 100vh; width: 100%; display: block; }
-        #controls { position: fixed; top: 10px; right: 10px; z-index: 1000; display: none; flex-direction: column; gap: 10px; }
-        .toggle-btn { padding: 10px 15px; font-weight: bold; border: none; border-radius: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer; font-size: 13px; width: 120px; }
-        .btn-on { background: #28a745; color: white; }
-        .btn-off { background: #dc3545; color: white; }
-        .btn-footprint { background: #ffc107; color: black; }
     </style>
 </head>
 <body>
 
-    <div id="login-container">
-        <div class="login-card">
-            <h2>位置共有マップ</h2>
-            <input type="text" id="user-name" placeholder="名前を入力（空欄で閲覧のみ）" maxlength="10">
-            <button onclick="enterMap()" style="width: 100%; padding: 12px; background: #667eea; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">地図を始める</button>
-        </div>
-    </div>
-
-    <div id="controls">
-        <button id="toggle-timer" class="toggle-btn btn-on" onclick="toggleTracking()">自動更新：ON</button>
-        <button id="toggle-path" class="toggle-btn btn-footprint" onclick="togglePath()">足跡：表示中</button>
-    </div>
-
+    <div id="status">受信中...</div>
     <div id="map"></div>
 
     <script>
+    // --- Firebaseの設定（管理者用と同じ設定を貼り付けてください） ---
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
         authDomain: "my-location-app-6812a.firebaseapp.com",
@@ -57,138 +41,78 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    let myName = "";
-    const myId = "user_" + Math.random().toString(36).substring(2, 9);
+    // 地図の初期化
+    const map = L.map('map').setView([35.6895, 139.6917], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
     const markers = {};
     const userPaths = {}; 
     const pathLayers = {};
-    let map;
-    let trackingTimer = null;
-    let isTracking = true;
-    let showPath = true;
 
-    // 位置送信関数
-    function sendLocation() {
-        // --- 名前が空欄の場合は、Firebaseへの送信をスキップする ---
-        if (!isTracking || !myName || myName.trim() === "") return;
-
-        navigator.geolocation.getCurrentPosition((position) => {
-            const lat = position.coords.latitude;
-            const lng = position.coords.longitude;
-            db.collection("locations").doc(myId).set({
-                lat: lat, lng: lng, name: myName,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            if (map && !markers[myId]) { map.setView([lat, lng], 15); }
-        }, (err) => console.log(err), { enableHighAccuracy: true });
-    }
-
-    // ログイン処理（名前なしでも通すように変更）
-    function enterMap() {
-        const nameInput = document.getElementById('user-name').value.trim();
-        
-        // 【変更】alertを出さず、そのまま変数に代入して進む
-        myName = nameInput; 
-        
-        document.getElementById('login-container').style.display = 'none';
-        document.getElementById('controls').style.display = 'flex';
-        initApp();
-    }
-
-    function initApp() {
-        map = L.map('map').setView([35.6895, 139.6917], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        const blueIcon = new L.Icon({
-            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41]
-        });
-        const redIcon = new L.Icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-            iconSize: [25, 41], iconAnchor: [12, 41]
-        });
-
-        sendLocation();
-        trackingTimer = setInterval(sendLocation, 10000);
-
-        // 30秒の足跡クリーナー
-        setInterval(() => {
-            const now = Date.now();
-            for (let id in userPaths) {
-                userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
-                if (pathLayers[id]) {
-                    const latlngs = userPaths[id].map(p => p.pos);
-                    pathLayers[id].setLatLngs(latlngs);
-                    if (latlngs.length < 2) map.removeLayer(pathLayers[id]);
-                    else if (showPath) pathLayers[id].addTo(map);
+    // --- 30秒以上前の古い足跡を消去するタイマー ---
+    setInterval(() => {
+        const now = Date.now();
+        for (let id in userPaths) {
+            // 30秒以上前のデータを削除
+            userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
+            
+            if (pathLayers[id]) {
+                const latlngs = userPaths[id].map(p => p.pos);
+                pathLayers[id].setLatLngs(latlngs);
+                // 座標が足りなくなったら線を消す
+                if (latlngs.length < 2) {
+                    map.removeLayer(pathLayers[id]);
                 }
             }
-        }, 3000);
+        }
+    }, 3000);
 
-        db.collection("locations").onSnapshot((snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-                const data = change.doc.data();
-                const id = change.doc.id;
+    // Firebaseの監視（管理者からのデータを取得）
+    db.collection("locations").onSnapshot((snapshot) => {
+        document.getElementById('status').innerText = "データ更新済み";
+        
+        snapshot.docChanges().forEach((change) => {
+            const data = change.doc.data();
+            const id = change.doc.id;
 
-                // 名前が空欄のユーザーは地図上に表示しない（前回のルール通り）
-                if (!data || !data.name || data.name.trim() === "") {
-                    if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
-                    if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
-                    return; 
+            // 名前がないユーザー（管理者以外など）は表示しない
+            if (!data || !data.name || data.name.trim() === "") {
+                if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+                if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
+                return; 
+            }
+
+            const pos = [data.lat, data.lng];
+
+            if (change.type === "added" || change.type === "modified") {
+                // 足跡データの蓄積
+                if (!userPaths[id]) userPaths[id] = [];
+                userPaths[id].push({ pos: pos, time: Date.now() });
+                
+                const latlngs = userPaths[id].map(p => p.pos);
+
+                // 足跡の線を描画（細め：weight 1.5）
+                if (pathLayers[id]) {
+                    pathLayers[id].setLatLngs(latlngs);
+                    if (latlngs.length >= 2) pathLayers[id].addTo(map);
+                } else {
+                    pathLayers[id] = L.polyline(latlngs, {color: 'red', weight: 1.5, opacity: 0.7});
+                    if (latlngs.length >= 2) pathLayers[id].addTo(map);
                 }
 
-                const pos = [data.lat, data.lng];
-
-                if (change.type === "added" || change.type === "modified") {
-                    if (!userPaths[id]) userPaths[id] = [];
-                    userPaths[id].push({ pos: pos, time: Date.now() });
-                    const latlngs = userPaths[id].map(p => p.pos);
-
-                    if (pathLayers[id]) {
-                        pathLayers[id].setLatLngs(latlngs);
-                    } else {
-                        const color = (id === myId) ? 'blue' : 'red';
-                        pathLayers[id] = L.polyline(latlngs, {color: color, weight: 1.5, opacity: 0.7});
-                        if (showPath && latlngs.length >= 2) pathLayers[id].addTo(map);
-                    }
-
-                    const label = data.name + (id === myId ? " (自分)" : "");
-                    if (markers[id]) {
-                        markers[id].setLatLng(pos).getPopup().setContent(label);
-                    } else {
-                        const icon = (id === myId) ? blueIcon : redIcon;
-                        markers[id] = L.marker(pos, {icon: icon}).addTo(map).bindPopup(label);
-                    }
+                // マーカーの描画
+                if (markers[id]) {
+                    markers[id].setLatLng(pos).getPopup().setContent(data.name);
+                } else {
+                    markers[id] = L.marker(pos).addTo(map).bindPopup(data.name);
+                    // 最初に見つけた管理者の位置に地図を移動
+                    map.panTo(pos);
                 }
-            });
+            }
         });
-    }
-
-    function toggleTracking() {
-        const btn = document.getElementById('toggle-timer');
-        if (isTracking) {
-            clearInterval(trackingTimer);
-            isTracking = false;
-            btn.innerText = "自動更新：OFF"; btn.className = "toggle-btn btn-off";
-        } else {
-            isTracking = true;
-            sendLocation();
-            trackingTimer = setInterval(sendLocation, 10000);
-            btn.innerText = "自動更新：ON"; btn.className = "toggle-btn btn-on";
-        }
-    }
-
-    function togglePath() {
-        const btn = document.getElementById('toggle-path');
-        showPath = !showPath;
-        btn.innerText = showPath ? "足跡：表示中" : "足跡：隠す";
-        for (let id in pathLayers) {
-            if (showPath && userPaths[id].length >= 2) pathLayers[id].addTo(map);
-            else map.removeLayer(pathLayers[id]);
-        }
-    }
+    });
     </script>
 </body>
 </html>
