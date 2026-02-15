@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置ナビ - 観客用（省電力モード）</title>
+    <title>山車位置ナビ - 観客用</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -17,35 +17,39 @@
         .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; transition: 0.2s; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* --- リストボタン：淡いオレンジ点滅 --- */
-        .user-btn.performing-btn {
-            background: #ffcc80 !important;
-            color: #5d4037 !important;
-            border-color: #ffa726 !important;
-            animation: blink-orange 1.2s infinite;
-        }
+        /* リストボタン：淡いオレンジ点滅 */
+        .user-btn.performing-btn { background: #ffcc80 !important; color: #5d4037 !important; border-color: #ffa726 !important; animation: blink-orange 1.2s infinite; }
 
-        /* --- ピンのラベル：基本設定 --- */
-        .viewer-label { 
-            background: white; border: 2px solid #007bff; border-radius: 5px; 
-            padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333;
-            transition: all 0.3s ease;
-        }
+        /* ピンのラベル（通常時） */
+        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333; transition: all 0.3s ease; }
 
-        /* --- 【修正】ピンのラベル：淡いオレンジ点滅 --- */
+        /* --- 【修正】ピンのラベル（共演時）：オレンジ点滅を強化 --- */
         .performing { 
+            /* 重要なプロパティに !important をつけて確実に適用 */
             border: 3px solid #ffa726 !important; 
             background: #ffcc80 !important; 
             color: #5d4037 !important; 
             font-size: 18px !important;
-            z-index: 1000 !important;
+            z-index: 1000 !important; /* 他のラベルより手前に表示 */
             animation: blink-orange 1.2s infinite; 
         }
 
+        /* 点滅アニメーションの定義 */
         @keyframes blink-orange {
-            0%, 100% { background: #ffcc80; box-shadow: 0 0 5px #ffcc80; }
-            50% { background: #ffb74d; box-shadow: 0 0 15px #ffa726; }
+            0%, 100% { 
+                background: #ffcc80; 
+                border-color: #ffa726;
+                box-shadow: 0 0 5px #ffcc80; 
+            }
+            50% { 
+                background: #ffe0b2; /* 少し明るく */
+                border-color: #ff9800; /* 少し濃く */
+                box-shadow: 0 0 15px #ffa726; /* 光彩を強く */
+            }
         }
+
+        /* 自分の現在地マーカー */
+        .my-location-dot { width: 15px; height: 15px; background: #007bff; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,123,255,0.6); }
     </style>
 </head>
 <body>
@@ -68,16 +72,15 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {}, lastUpdateTimes = {};
-    let followingId = null; 
+    let followingId = null;
+    let myLocationMarker = null;
 
-    // --- 【13秒物理削除クリーナー】 ---
+    // 13秒物理削除クリーナー
     setInterval(async () => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
             if (now - lastUpdateTimes[id] > 13000) {
-                try {
-                    await db.collection("locations").doc(id).delete();
-                } catch (e) {}
+                try { await db.collection("locations").doc(id).delete(); } catch (e) {}
                 removeUI(id);
             }
         }
@@ -92,8 +95,7 @@
 
     db.collection("locations").onSnapshot(snapshot => {
         snapshot.docChanges().forEach(change => {
-            const data = change.doc.data();
-            const id = change.doc.id;
+            const data = change.doc.data(), id = change.doc.id;
             if (change.type === "removed" || !data) { removeUI(id); return; }
 
             lastUpdateTimes[id] = Date.now();
@@ -115,6 +117,7 @@
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
             const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
+            // 共演中は 'performing' クラスを付与して点滅させる
             const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
             
             if (markers[id]) {
@@ -131,16 +134,22 @@
         document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id.replace('btn-','') === followingId));
     }
 
-    // --- 【修正】GPS省電力設定 ---
-    // 観客側は自分の位置を正確に送る必要がないため、精度を落としてバッテリーを節約します
+    // 自分の現在地を表示（省電力設定）
     function updateUserLocation() {
-        navigator.geolocation.getCurrentPosition(() => {}, () => {}, { 
-            enableHighAccuracy: false, // GPS（衛星）を使わず、Wi-Fiや基地局で大まかに取得
-            maximumAge: 30000,         // 30秒前のキャッシュデータを利用して計算を減らす
-            timeout: 20000
-        });
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            if (myLocationMarker) {
+                myLocationMarker.setLatLng([lat, lng]);
+            } else {
+                const myIcon = L.divIcon({ className: 'my-location-dot', iconSize: [15, 15], iconAnchor: [7.5, 7.5] });
+                myLocationMarker = L.marker([lat, lng], { icon: myIcon }).addTo(map);
+            }
+        }, (err) => { console.log("現在地取得エラー:", err); }, 
+        { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 });
     }
-    setInterval(updateUserLocation, 60000); // 1分に1回程度に抑える
+    updateUserLocation();
+    setInterval(updateUserLocation, 15000);
     </script>
 </body>
 </html>
