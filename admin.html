@@ -3,64 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置配信 - 接近アラート付</title>
-
+    <title>山車位置配信 - 共演モード付</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
-
-        /* --- 設定画面（ログイン） --- */
-        #login-container {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: linear-gradient(135deg, #b22222, #000);
-            display: flex; justify-content: center; align-items: center; z-index: 3000;
-        }
+        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #b22222, #000); display: flex; justify-content: center; align-items: center; z-index: 3000; }
         .login-card { background: white; padding: 30px; border-radius: 20px; text-align: center; width: 85%; max-width: 350px; }
-        input[type="text"] { width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 10px; box-sizing: border-box; font-size: 16px; font-weight: bold; text-align: center; }
+        input[type="text"] { width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; font-weight: bold; text-align: center; box-sizing: border-box; }
         .start-btn { width: 100%; padding: 15px; background: #b22222; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; }
 
-        /* --- 配信中画面 --- */
         #admin-display { display: none; position: relative; width: 100%; height: 100vh; }
         #map { height: 100%; width: 100%; z-index: 1; }
-
-        /* --- 左側の他山車選択リスト --- */
-        #other-float-menu {
-            position: absolute; top: 10px; left: 10px;
-            z-index: 2000; display: flex; flex-direction: column; gap: 5px;
-            width: 120px; max-height: 40vh; overflow-y: auto;
-        }
+        
+        #other-float-menu { position: absolute; top: 10px; left: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 5px; width: 120px; max-height: 40vh; overflow-y: auto; }
         .menu-title { background: rgba(0,0,0,0.7); color: #aaa; padding: 4px; font-size: 9px; border-radius: 4px; text-align: center; }
-        .user-btn {
-            background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px;
-            padding: 6px; font-size: 10px; font-weight: bold; cursor: pointer;
-            text-align: left; transition: 0.2s;
-        }
+        .user-btn { background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px; padding: 6px; font-size: 10px; font-weight: bold; cursor: pointer; text-align: left; transition: 0.2s; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* --- 下部フローティングパネル（小型化） --- */
-        #floating-panel {
-            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
-            width: 94%; max-width: 360px; z-index: 2000;
-            background: rgba(0, 0, 0, 0.85); border: 1.5px solid #b22222;
-            border-radius: 15px; padding: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
-        }
+        /* --- フローティングパネル --- */
+        #floating-panel { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 94%; max-width: 360px; z-index: 2000; background: rgba(0, 0, 0, 0.85); border: 1.5px solid #b22222; border-radius: 15px; padding: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); backdrop-filter: blur(5px); }
         #active-name { font-size: 13px; font-weight: bold; color: #ffc107; margin-bottom: 4px; text-align: center; }
         
-        #status-monitor {
-            background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 6px;
-            font-family: monospace; font-size: 8px; color: #00ff00;
-            display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 6px;
-        }
+        /* 共演中ステータス表示 */
+        #coperform-status { font-size: 15px; color: #fff; background: #b22222; font-weight: bold; margin-bottom: 4px; text-align: center; display: none; padding: 2px; border-radius: 4px; animation: blink 1s infinite; }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
 
-        /* アラート表示 */
         #proximity-alert { font-size: 9px; color: #ff4444; font-weight: bold; margin-bottom: 4px; text-align: center; height: 12px; }
 
-        /* ボタン群のサイズ調整 */
+        /* 共演確認ポップアップ */
+        #coperform-ask { display: none; background: #333; border: 2px solid #ffc107; border-radius: 10px; padding: 10px; margin-bottom: 10px; text-align: center; }
+        .ask-btn-group { display: flex; gap: 10px; justify-content: center; margin-top: 8px; }
+        .ask-btn { padding: 5px 20px; border-radius: 5px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; }
+
+        #status-monitor { background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 6px; font-family: monospace; font-size: 8px; color: #00ff00; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 6px; }
+
         .btn-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
         .follow-toggle { background: #444; border: none; color: white; padding: 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
         .follow-toggle.active { background: #28a745; }
@@ -82,13 +61,21 @@
 
     <div id="admin-display">
         <div id="map"></div>
-        <div id="other-float-menu">
-            <div class="menu-title">他山車を追跡</div>
-            <div id="button-list"></div>
-        </div>
+        <div id="other-float-menu"><div class="menu-title">他山車を追跡</div><div id="button-list"></div></div>
         
         <div id="floating-panel">
             <div id="active-name"></div>
+            
+            <div id="coperform-status">🥁 山車の共演中 🥁</div>
+
+            <div id="coperform-ask">
+                <div id="ask-text" style="font-size:14px; font-weight:bold;">共演開始？</div>
+                <div class="ask-btn-group">
+                    <button class="ask-btn" style="background:#28a745; color:white;" onclick="setCoPerformance(true)">YES</button>
+                    <button class="ask-btn" style="background:#555; color:white;" onclick="setCoPerformance(false)">NO</button>
+                </div>
+            </div>
+
             <div id="proximity-alert"></div>
             <div id="status-monitor">
                 <div>LAT: <span id="mon-lat">---</span></div>
@@ -98,7 +85,7 @@
             </div>
             <div class="btn-group">
                 <button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">自追跡:ON</button>
-                <button class="follow-toggle" style="background:#007bff;" onclick="map.setZoom(17)">拡大</button>
+                <button class="follow-toggle" style="background:#007bff;" onclick="map.setZoom(18)">拡大</button>
                 <button class="stop-btn" onclick="stopAdmin(true)">配信終了</button>
             </div>
         </div>
@@ -116,16 +103,23 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    let myName = "", isAutoFollow = true, followingOtherId = null;
+    let myName = "", isAutoFollow = true, followingOtherId = null, isCoPerforming = false;
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map, myMarker, updateInterval, watchdogTimer, lastSuccessTime = Date.now();
     const otherMarkers = {}, lastUpdateOthers = {};
-    const alertedFloats = new Set(); // 接近通知済みの山車ID
+    const alertedFloats = new Set(); 
+    let lastPromptTime = 0; // 連続ポップアップ防止
 
     window.onload = () => {
         const n = localStorage.getItem('dashi_name');
         if (n) document.getElementById('admin-name').value = n;
     };
+
+    function setCoPerformance(status) {
+        isCoPerforming = status;
+        document.getElementById('coperform-ask').style.display = 'none';
+        document.getElementById('coperform-status').style.display = status ? 'block' : 'none';
+    }
 
     function toggleAutoFollow() {
         isAutoFollow = !isAutoFollow;
@@ -134,13 +128,9 @@
     }
 
     function toggleFollowOther(id) {
-        if (followingOtherId === id) {
-            followingOtherId = null;
-        } else {
-            followingOtherId = id;
-            isAutoFollow = false;
-            if (otherMarkers[id]) map.flyTo(otherMarkers[id].getLatLng(), 17);
-        }
+        followingOtherId = (followingOtherId === id) ? null : id;
+        isAutoFollow = !followingOtherId;
+        if (followingOtherId && otherMarkers[id]) map.flyTo(otherMarkers[id].getLatLng(), 18);
         updateUIState();
     }
 
@@ -148,9 +138,7 @@
         const btn = document.getElementById('follow-btn');
         btn.innerText = "自追跡:" + (isAutoFollow ? "ON" : "OFF");
         btn.className = "follow-toggle " + (isAutoFollow ? "active" : "");
-        document.querySelectorAll('.user-btn').forEach(b => {
-            b.classList.toggle('following', b.id === 'btn-' + followingOtherId);
-        });
+        document.querySelectorAll('.user-btn').forEach(b => b.classList.toggle('following', b.id === 'btn-' + followingOtherId));
     }
 
     function startAdmin() {
@@ -169,9 +157,7 @@
         watchdogTimer = setInterval(() => {
             if (Date.now() - lastSuccessTime > 25000) stopAdmin(false);
             const now = Date.now();
-            for (let id in lastUpdateOthers) {
-                if (now - lastUpdateOthers[id] > 25000) removeOtherUI(id);
-            }
+            for (let id in lastUpdateOthers) if (now - lastUpdateOthers[id] > 25000) removeOtherUI(id);
         }, 5000);
     }
 
@@ -183,11 +169,8 @@
 
     function removeOtherUI(id) {
         if (otherMarkers[id]) { map.removeLayer(otherMarkers[id]); delete otherMarkers[id]; }
-        const btn = document.getElementById('btn-' + id);
-        if (btn) btn.remove();
-        delete lastUpdateOthers[id];
-        alertedFloats.delete(id);
-        if (followingOtherId === id) followingOtherId = null;
+        const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
+        delete lastUpdateOthers[id]; alertedFloats.delete(id);
     }
 
     function initMap() {
@@ -197,20 +180,29 @@
         db.collection("locations").onSnapshot(snapshot => {
             const buttonList = document.getElementById('button-list');
             const alertDiv = document.getElementById('proximity-alert');
+            const askDiv = document.getElementById('coperform-ask');
             let nearbyFound = false;
 
             snapshot.docChanges().forEach(change => {
                 const data = change.doc.data();
                 const id = change.doc.id;
-                if (id === myId) return;
-                if (change.type === "removed" || !data.name) { removeOtherUI(id); return; }
+                if (id === myId || change.type === "removed" || !data.name) { if (id !== myId) removeOtherUI(id); return; }
 
                 const pos = [data.lat, data.lng];
                 lastUpdateOthers[id] = Date.now();
 
-                // 接近チェック (100m)
                 if (myMarker) {
                     const dist = myMarker.getLatLng().distanceTo(L.latLng(pos));
+                    
+                    // --- 5メートル以内：共演開始確認 ---
+                    if (dist < 5 && !isCoPerforming && (Date.now() - lastPromptTime > 60000)) {
+                        askDiv.style.display = 'block';
+                        document.getElementById('ask-text').innerText = `${data.name}と共演開始？`;
+                        if ("vibrate" in navigator) navigator.vibrate([500, 200, 500]); // 長めの振動
+                        lastPromptTime = Date.now();
+                    }
+
+                    // --- 100メートル以内：接近アラート ---
                     if (dist < 100) {
                         nearbyFound = true;
                         alertDiv.innerText = `⚠️ 接近: ${data.name} (${Math.round(dist)}m)`;
@@ -218,27 +210,19 @@
                             if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
                             alertedFloats.add(id);
                         }
-                    } else {
-                        alertedFloats.delete(id);
-                    }
+                    } else { alertedFloats.delete(id); }
                 }
 
                 let btn = document.getElementById('btn-' + id);
                 if (!btn) {
-                    btn = document.createElement('button');
-                    btn.id = 'btn-' + id;
-                    btn.className = 'user-btn';
-                    btn.onclick = () => toggleFollowOther(id);
-                    buttonList.appendChild(btn);
+                    btn = document.createElement('button'); btn.id = 'btn-' + id; btn.className = 'user-btn';
+                    btn.onclick = () => toggleFollowOther(id); buttonList.appendChild(btn);
                 }
                 btn.innerText = (followingOtherId === id ? "👀 " : "📍 ") + data.name;
                 if (followingOtherId === id) map.panTo(pos);
 
-                if (otherMarkers[id]) {
-                    otherMarkers[id].setLatLng(pos).getTooltip().setContent(data.name);
-                } else {
-                    otherMarkers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { permanent: true, direction: 'top', className: 'other-label' });
-                }
+                if (otherMarkers[id]) otherMarkers[id].setLatLng(pos).getTooltip().setContent(data.name);
+                else otherMarkers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { permanent: true, direction: 'top', className: 'other-label' });
             });
             if (!nearbyFound) alertDiv.innerText = "";
         });
@@ -250,15 +234,13 @@
                 document.getElementById('mon-lng').innerText = lng.toFixed(5);
                 document.getElementById('mon-acc').innerText = `±${Math.round(pos.coords.accuracy)}m`;
                 document.getElementById('mon-time').innerText = new Date().toLocaleTimeString('ja-JP', {hour12: false});
-
                 db.collection("locations").doc(myId).set({ lat, lng, name: myName, timestamp: firebase.firestore.FieldValue.serverTimestamp() }).then(() => { lastSuccessTime = Date.now(); });
                 if (isAutoFollow) map.panTo([lat, lng]);
-                if (myMarker) { myMarker.setLatLng([lat, lng]); }
-                else { myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' }); }
-            }, (err) => {}, { enableHighAccuracy: true, timeout: 8000 });
+                if (myMarker) myMarker.setLatLng([lat, lng]);
+                else myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
+            }, null, { enableHighAccuracy: true });
         }
-        sendLocation();
-        updateInterval = setInterval(sendLocation, 10000);
+        sendLocation(); setInterval(sendLocation, 10000);
     }
     </script>
 </body>
