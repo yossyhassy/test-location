@@ -31,10 +31,32 @@
             width: 15px; height: 15px; background: #007bff; border: 2px solid white; border-radius: 50%;
             box-shadow: 0 0 10px rgba(0,123,255,0.6);
         }
+
+        /* --- 【新設】現在地表示ボタンのスタイル --- */
+        #location-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 2000;
+            background: white;
+            border: 2px solid #007bff;
+            border-radius: 50%;
+            width: 56px;
+            height: 56px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            cursor: pointer;
+            font-size: 28px;
+        }
     </style>
 </head>
 <body>
     <div id="admin-menu"><div class="menu-title">山車区を選択</div><div id="button-list"></div></div>
+    
+    <div id="location-btn" onclick="goToMyLocation()">🎯</div>
+
     <div id="map"></div>
 
     <script>
@@ -55,6 +77,15 @@
     const markers = {}, lastUpdateTimes = {};
     let followingId = null;
     let myLocationMarker = null; // 自分の現在地マーカー
+
+    // --- 【新設】自分の現在地にジャンプする関数 ---
+    function goToMyLocation() {
+        if (myLocationMarker) {
+            map.flyTo(myLocationMarker.getLatLng(), 17);
+        } else {
+            alert("現在地を取得中です。しばらくお待ちください。");
+        }
+    }
 
     // 13秒物理削除クリーナー
     setInterval(async () => {
