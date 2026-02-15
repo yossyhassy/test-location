@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置配信 - 共演モード付</title>
+    <title>山車位置配信 - 管理ツール</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -14,83 +14,47 @@
         .login-card { background: white; padding: 30px; border-radius: 20px; text-align: center; width: 85%; max-width: 350px; }
         input[type="text"] { width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; font-weight: bold; text-align: center; box-sizing: border-box; }
         .start-btn { width: 100%; padding: 15px; background: #b22222; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; }
-
         #admin-display { display: none; position: relative; width: 100%; height: 100vh; }
         #map { height: 100%; width: 100%; z-index: 1; }
-        
         #other-float-menu { position: absolute; top: 10px; left: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 5px; width: 120px; max-height: 40vh; overflow-y: auto; }
         .menu-title { background: rgba(0,0,0,0.7); color: #aaa; padding: 4px; font-size: 9px; border-radius: 4px; text-align: center; }
-        .user-btn { background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px; padding: 6px; font-size: 10px; font-weight: bold; cursor: pointer; text-align: left; transition: 0.2s; }
+        .user-btn { background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px; padding: 6px; font-size: 10px; font-weight: bold; cursor: pointer; text-align: left; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
-
-        /* --- フローティングパネル --- */
         #floating-panel { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 94%; max-width: 360px; z-index: 2000; background: rgba(0, 0, 0, 0.85); border: 1.5px solid #b22222; border-radius: 15px; padding: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); backdrop-filter: blur(5px); }
         #active-name { font-size: 13px; font-weight: bold; color: #ffc107; margin-bottom: 4px; text-align: center; }
-        
-        /* 共演中ステータス表示 */
         #coperform-status { font-size: 15px; color: #fff; background: #b22222; font-weight: bold; margin-bottom: 4px; text-align: center; display: none; padding: 2px; border-radius: 4px; animation: blink 1s infinite; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
-
-        #proximity-alert { font-size: 9px; color: #ff4444; font-weight: bold; margin-bottom: 4px; text-align: center; height: 12px; }
-
-        /* 共演確認ポップアップ */
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         #coperform-ask { display: none; background: #333; border: 2px solid #ffc107; border-radius: 10px; padding: 10px; margin-bottom: 10px; text-align: center; }
         .ask-btn-group { display: flex; gap: 10px; justify-content: center; margin-top: 8px; }
         .ask-btn { padding: 5px 20px; border-radius: 5px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; }
-
         #status-monitor { background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 6px; font-family: monospace; font-size: 8px; color: #00ff00; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 6px; }
-
-        .btn-group { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; }
-        .follow-toggle { background: #444; border: none; color: white; padding: 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .follow-toggle { background: #444; border: none; color: white; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; }
         .follow-toggle.active { background: #28a745; }
-        .stop-btn { background: #dc3545; border: none; color: white; padding: 8px; border-radius: 6px; font-size: 10px; font-weight: bold; }
-
+        .stop-btn { background: #dc3545; border: none; color: white; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; }
         .admin-label { background: white; border: 1.5px solid #b22222; border-radius: 4px; padding: 2px 5px; font-weight: bold; color: #b22222; font-size: 10px; }
         .other-label { background: white; border: 1.5px solid #007bff; border-radius: 4px; padding: 2px 5px; font-weight: bold; color: #007bff; font-size: 10px; }
     </style>
 </head>
 <body>
-
-    <div id="login-container">
-        <div class="login-card">
-            <h2 style="color:#b22222; margin:0 0 20px;">山車位置配信</h2>
-            <input type="text" id="admin-name" placeholder="山車区名">
-            <button class="start-btn" onclick="startAdmin()">配信を開始する</button>
-        </div>
-    </div>
-
+    <div id="login-container"><div class="login-card"><h2 style="color:#b22222; margin:0 0 20px;">山車位置配信</h2><input type="text" id="admin-name" placeholder="山車区名"><button class="start-btn" onclick="startAdmin()">配信を開始する</button></div></div>
     <div id="admin-display">
         <div id="map"></div>
         <div id="other-float-menu"><div class="menu-title">他山車を追跡</div><div id="button-list"></div></div>
-        
         <div id="floating-panel">
             <div id="active-name"></div>
-            
             <div id="coperform-status">🥁 山車の共演中 🥁</div>
-
             <div id="coperform-ask">
-                <div id="ask-text" style="font-size:14px; font-weight:bold;">共演開始？</div>
-                <div class="ask-btn-group">
-                    <button class="ask-btn" style="background:#28a745; color:white;" onclick="setCoPerformance(true)">YES</button>
-                    <button class="ask-btn" style="background:#555; color:white;" onclick="setCoPerformance(false)">NO</button>
-                </div>
+                <div id="ask-text" style="font-size:13px; font-weight:bold;">共演開始？</div>
+                <div class="ask-btn-group"><button class="ask-btn" style="background:#28a745; color:white;" onclick="setCoPerformance(true)">YES</button><button class="ask-btn" style="background:#555; color:white;" onclick="setCoPerformance(false)">NO</button></div>
             </div>
-
-            <div id="proximity-alert"></div>
             <div id="status-monitor">
-                <div>LAT: <span id="mon-lat">---</span></div>
-                <div>LNG: <span id="mon-lng">---</span></div>
-                <div>ACC: <span id="mon-acc">---</span></div>
-                <div>UPD: <span id="mon-time">---</span></div>
+                <div>LAT: <span id="mon-lat">---</span></div><div>LNG: <span id="mon-lng">---</span></div>
+                <div>ACC: <span id="mon-acc">---</span></div><div>UPD: <span id="mon-time">---</span></div>
             </div>
-            <div class="btn-group">
-                <button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">自追跡:ON</button>
-                <button class="follow-toggle" style="background:#007bff;" onclick="map.setZoom(18)">拡大</button>
-                <button class="stop-btn" onclick="stopAdmin(true)">配信終了</button>
-            </div>
+            <div class="btn-group"><button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">自追跡:ON</button><button class="stop-btn" onclick="stopAdmin(true)">配信終了</button></div>
         </div>
     </div>
-
     <script>
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
@@ -107,8 +71,7 @@
     const myId = "admin_" + Math.random().toString(36).substring(2, 9);
     let map, myMarker, updateInterval, watchdogTimer, lastSuccessTime = Date.now();
     const otherMarkers = {}, lastUpdateOthers = {};
-    const alertedFloats = new Set(); 
-    let lastPromptTime = 0; // 連続ポップアップ防止
+    let lastPromptTime = 0;
 
     window.onload = () => {
         const n = localStorage.getItem('dashi_name');
@@ -119,6 +82,7 @@
         isCoPerforming = status;
         document.getElementById('coperform-ask').style.display = 'none';
         document.getElementById('coperform-status').style.display = status ? 'block' : 'none';
+        sendLocation();
     }
 
     function toggleAutoFollow() {
@@ -155,10 +119,11 @@
     function startWatchdog() {
         lastSuccessTime = Date.now();
         watchdogTimer = setInterval(() => {
-            if (Date.now() - lastSuccessTime > 25000) stopAdmin(false);
+            // 【変更】13秒ルール
+            if (Date.now() - lastSuccessTime > 13000) stopAdmin(false);
             const now = Date.now();
-            for (let id in lastUpdateOthers) if (now - lastUpdateOthers[id] > 25000) removeOtherUI(id);
-        }, 5000);
+            for (let id in lastUpdateOthers) if (now - lastUpdateOthers[id] > 13000) removeOtherUI(id);
+        }, 2000);
     }
 
     async function stopAdmin(withConfirm) {
@@ -170,7 +135,7 @@
     function removeOtherUI(id) {
         if (otherMarkers[id]) { map.removeLayer(otherMarkers[id]); delete otherMarkers[id]; }
         const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
-        delete lastUpdateOthers[id]; alertedFloats.delete(id);
+        delete lastUpdateOthers[id];
     }
 
     function initMap() {
@@ -179,38 +144,22 @@
 
         db.collection("locations").onSnapshot(snapshot => {
             const buttonList = document.getElementById('button-list');
-            const alertDiv = document.getElementById('proximity-alert');
             const askDiv = document.getElementById('coperform-ask');
-            let nearbyFound = false;
-
             snapshot.docChanges().forEach(change => {
                 const data = change.doc.data();
                 const id = change.doc.id;
                 if (id === myId || change.type === "removed" || !data.name) { if (id !== myId) removeOtherUI(id); return; }
-
                 const pos = [data.lat, data.lng];
                 lastUpdateOthers[id] = Date.now();
 
                 if (myMarker) {
                     const dist = myMarker.getLatLng().distanceTo(L.latLng(pos));
-                    
-                    // --- 5メートル以内：共演開始確認 ---
                     if (dist < 5 && !isCoPerforming && (Date.now() - lastPromptTime > 60000)) {
                         askDiv.style.display = 'block';
                         document.getElementById('ask-text').innerText = `${data.name}と共演開始？`;
-                        if ("vibrate" in navigator) navigator.vibrate([500, 200, 500]); // 長めの振動
+                        if ("vibrate" in navigator) navigator.vibrate([500, 200, 500]);
                         lastPromptTime = Date.now();
                     }
-
-                    // --- 100メートル以内：接近アラート ---
-                    if (dist < 100) {
-                        nearbyFound = true;
-                        alertDiv.innerText = `⚠️ 接近: ${data.name} (${Math.round(dist)}m)`;
-                        if (!alertedFloats.has(id)) {
-                            if ("vibrate" in navigator) navigator.vibrate([200, 100, 200]);
-                            alertedFloats.add(id);
-                        }
-                    } else { alertedFloats.delete(id); }
                 }
 
                 let btn = document.getElementById('btn-' + id);
@@ -220,27 +169,27 @@
                 }
                 btn.innerText = (followingOtherId === id ? "👀 " : "📍 ") + data.name;
                 if (followingOtherId === id) map.panTo(pos);
-
                 if (otherMarkers[id]) otherMarkers[id].setLatLng(pos).getTooltip().setContent(data.name);
                 else otherMarkers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { permanent: true, direction: 'top', className: 'other-label' });
             });
-            if (!nearbyFound) alertDiv.innerText = "";
         });
 
-        function sendLocation() {
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const lat = pos.coords.latitude, lng = pos.coords.longitude;
-                document.getElementById('mon-lat').innerText = lat.toFixed(5);
-                document.getElementById('mon-lng').innerText = lng.toFixed(5);
-                document.getElementById('mon-acc').innerText = `±${Math.round(pos.coords.accuracy)}m`;
-                document.getElementById('mon-time').innerText = new Date().toLocaleTimeString('ja-JP', {hour12: false});
-                db.collection("locations").doc(myId).set({ lat, lng, name: myName, timestamp: firebase.firestore.FieldValue.serverTimestamp() }).then(() => { lastSuccessTime = Date.now(); });
-                if (isAutoFollow) map.panTo([lat, lng]);
-                if (myMarker) myMarker.setLatLng([lat, lng]);
-                else myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
-            }, null, { enableHighAccuracy: true });
-        }
-        sendLocation(); setInterval(sendLocation, 10000);
+        sendLocation();
+        updateInterval = setInterval(sendLocation, 5000);
+    }
+
+    function sendLocation() {
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            document.getElementById('mon-lat').innerText = lat.toFixed(5);
+            document.getElementById('mon-lng').innerText = lng.toFixed(5);
+            document.getElementById('mon-acc').innerText = `±${Math.round(pos.coords.accuracy)}m`;
+            document.getElementById('mon-time').innerText = new Date().toLocaleTimeString('ja-JP', {hour12: false});
+            db.collection("locations").doc(myId).set({ lat, lng, name: myName, status: isCoPerforming ? "🥁共演中🥁" : "", timestamp: firebase.firestore.FieldValue.serverTimestamp() }).then(() => { lastSuccessTime = Date.now(); });
+            if (isAutoFollow) map.panTo([lat, lng]);
+            if (myMarker) myMarker.setLatLng([lat, lng]);
+            else myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
+        }, null, { enableHighAccuracy: true });
     }
     </script>
 </body>
