@@ -13,43 +13,18 @@
         #map { height: 100vh; width: 100%; z-index: 1; background: #eee; }
         #admin-menu { position: fixed; top: 15px; left: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; width: 220px; }
         .menu-title { background: #333; color: white; padding: 12px; font-size: 15px; border-radius: 8px; font-weight: bold; text-align: center; }
-        
         .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; transition: all 0.2s; }
-        
-        /* 追跡中のスタイル */
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
-
-        /* --- 淡いオレンジの共演ボタン（点滅） --- */
-        .user-btn.performing-btn {
-            background: #ffcc80 !important;
-            color: #5d4037 !important;
-            border-color: #ffa726 !important;
-            animation: blink-orange 1.2s infinite;
-        }
-        /* 追跡中かつ共演中の場合は、オレンジを優先しつつ枠を強調 */
-        .user-btn.following.performing-btn { border-color: #5d4037 !important; border-width: 4px; }
-
+        .user-btn.performing-btn { background: #ffcc80 !important; color: #5d4037 !important; border-color: #ffa726 !important; animation: blink-orange 1.2s infinite; }
         .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333; }
-
-        /* 地図上の淡いオレンジ・パルス */
-        .performing { 
-            border: 3px solid #ffa726 !important; 
-            background: #ffcc80 !important; 
-            color: #5d4037 !important; 
-            font-size: 18px !important;
-            animation: blink-orange 1.2s infinite; 
-            z-index: 1000 !important;
-        }
-
-        @keyframes blink-orange {
-            0%, 100% { background: #ffcc80; box-shadow: 0 0 5px #ffcc80; }
-            50% { background: #ffb74d; box-shadow: 0 0 15px #ffa726; }
-        }
+        .performing { border: 3px solid #ffa726 !important; background: #ffcc80 !important; color: #5d4037 !important; font-size: 18px !important; animation: blink-orange 1.2s infinite; z-index: 1000 !important; }
+        @keyframes blink-orange { 0%, 100% { background: #ffcc80; box-shadow: 0 0 5px #ffcc80; } 50% { background: #ffb74d; box-shadow: 0 0 15px #ffa726; } }
     </style>
 </head>
 <body>
     <div id="admin-menu"><div class="menu-title">山車区を選択</div><div id="button-list"></div></div>
     <div id="map"></div>
+
     <script>
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
@@ -67,72 +42,68 @@
     const markers = {}, lastUpdateTimes = {};
     let followingId = null; 
 
-    // 13秒お掃除タイマー
-    setInterval(() => {
+    // --- 【13秒物理削除クリーナー】 ---
+    setInterval(async () => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
             if (now - lastUpdateTimes[id] > 13000) {
-                if (markers[id]) map.removeLayer(markers[id]);
-                delete markers[id]; delete lastUpdateTimes[id];
-                const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
-                if (followingId === id) followingId = null;
+                // 13秒経過したドキュメントをDBから物理的に削除
+                try {
+                    await db.collection("locations").doc(id).delete();
+                    console.log("Stale doc deleted: " + id);
+                } catch (e) { console.error("Delete error:", e); }
+                
+                // ローカル側の後処理
+                removeUI(id);
             }
         }
     }, 2000);
+
+    function removeUI(id) {
+        if (markers[id]) map.removeLayer(markers[id]);
+        delete markers[id]; delete lastUpdateTimes[id];
+        const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
+        if (followingId === id) followingId = null;
+    }
 
     db.collection("locations").onSnapshot(snapshot => {
         const buttonList = document.getElementById('button-list');
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
+
             if (change.type === "removed" || !data) {
-                if (markers[id]) map.removeLayer(markers[id]); delete markers[id];
-                const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
-                if (followingId === id) followingId = null;
-                return;
+                removeUI(id); return;
             }
+
             lastUpdateTimes[id] = Date.now();
             const pos = [data.lat, data.lng];
+            if (followingId === id) map.panTo(pos);
 
             let btn = document.getElementById('btn-' + id);
             if (!btn) {
                 btn = document.createElement('button'); btn.id = 'btn-' + id; btn.className = 'user-btn';
-                // --- 【修正】ボタンクリック時の動作を共通化 ---
                 btn.onclick = () => {
-                    if (followingId === id) {
-                        followingId = null; // 追跡解除
-                    } else {
-                        followingId = id; // 新規追跡
-                        if (markers[id]) map.flyTo(markers[id].getLatLng(), 17);
-                    }
+                    followingId = (followingId === id) ? null : id;
+                    if (followingId && markers[id]) map.flyTo(markers[id].getLatLng(), 17);
                     updateUI();
                 };
                 buttonList.appendChild(btn);
             }
-            
             const isPerforming = (data.status === "ON");
             btn.classList.toggle('performing-btn', isPerforming);
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
             const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
             const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
-            
-            if (markers[id]) {
-                markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
-            } else {
-                markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
-            }
-            
-            if (followingId === id) map.panTo(pos);
+            if (markers[id]) markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
+            else markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
         });
         updateUI();
     });
 
     function updateUI() {
-        document.querySelectorAll('.user-btn').forEach(btn => {
-            const id = btn.id.replace('btn-', '');
-            btn.classList.toggle('following', id === followingId);
-        });
+        document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id === 'btn-' + followingId));
     }
     </script>
 </body>
