@@ -11,44 +11,48 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
         #map { height: 100vh; width: 100%; z-index: 1; background: #eee; }
+        
         #admin-menu { position: fixed; top: 15px; left: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; width: 220px; }
         .menu-title { background: #333; color: white; padding: 12px; font-size: 15px; border-radius: 8px; font-weight: bold; text-align: center; }
-        
-        .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; transition: 0.2s; }
+        .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* リストボタン：淡いオレンジ点滅 */
-        .user-btn.performing-btn { background: #ffcc80 !important; color: #5d4037 !important; border-color: #ffa726 !important; animation: blink-orange 1.2s infinite; }
-
-        /* ピンのラベル（通常時） */
-        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333; transition: all 0.3s ease; }
-
-        /* --- 【修正】ピンのラベル（共演時）：オレンジ点滅を強化 --- */
-        .performing { 
-            /* 重要なプロパティに !important をつけて確実に適用 */
-            border: 3px solid #ffa726 !important; 
-            background: #ffcc80 !important; 
-            color: #5d4037 !important; 
-            font-size: 18px !important;
-            z-index: 1000 !important; /* 他のラベルより手前に表示 */
-            animation: blink-orange 1.2s infinite; 
+        /* 通常のラベル（名前） */
+        .viewer-label { 
+            background: white !important; 
+            border: 2px solid #007bff !important; 
+            border-radius: 5px !important; 
+            padding: 4px 12px !important; 
+            font-weight: bold !important; 
+            font-size: 14px !important; 
+            color: #333 !important; 
+            white-space: nowrap;
         }
 
-        /* 点滅アニメーションの定義 */
-        @keyframes blink-orange {
+        /* --- 【修正】共演中：オレンジ色に激しく光る設定 --- */
+        .performing { 
+            background: #ffcc80 !important; /* 淡いオレンジ */
+            border: 3px solid #ffa726 !important; /* 濃いオレンジの枠 */
+            color: #5d4037 !important; /* 濃い茶色の文字 */
+            font-size: 18px !important;
+            z-index: 1000 !important;
+            /* 光の広がり（ボックスシャドウ）と脈動アニメーション */
+            animation: glow-orange 1.2s infinite ease-in-out !important;
+        }
+
+        @keyframes glow-orange {
             0%, 100% { 
-                background: #ffcc80; 
-                border-color: #ffa726;
-                box-shadow: 0 0 5px #ffcc80; 
+                background: #ffcc80 !important;
+                box-shadow: 0 0 10px #ffa726, 0 0 20px #ffcc80 !important;
+                transform: scale(1);
             }
             50% { 
-                background: #ffe0b2; /* 少し明るく */
-                border-color: #ff9800; /* 少し濃く */
-                box-shadow: 0 0 15px #ffa726; /* 光彩を強く */
+                background: #ffe0b2 !important;
+                box-shadow: 0 0 25px #ff9800, 0 0 40px #ffa726 !important;
+                transform: scale(1.1); /* 少し大きくして光を強調 */
             }
         }
 
-        /* 自分の現在地マーカー */
         .my-location-dot { width: 15px; height: 15px; background: #007bff; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,123,255,0.6); }
     </style>
 </head>
@@ -75,7 +79,7 @@
     let followingId = null;
     let myLocationMarker = null;
 
-    // 13秒物理削除クリーナー
+    // 13秒物理削除
     setInterval(async () => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
@@ -117,13 +121,18 @@
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
             const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
-            // 共演中は 'performing' クラスを付与して点滅させる
-            const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
+            const labelClass = isPerforming ? "viewer-label performing" : "viewer-label";
             
             if (markers[id]) {
-                markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
+                markers[id].setLatLng(pos);
+                // ツールチップを再バインドすることで確実にスタイル（クラス名）を更新
+                markers[id].unbindTooltip().bindTooltip(labelContent, { 
+                    permanent: true, direction: 'top', className: labelClass 
+                });
             } else {
-                markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+                markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { 
+                    permanent: true, direction: 'top', className: labelClass 
+                });
             }
             if (followingId === id) map.panTo(pos);
         });
@@ -134,19 +143,16 @@
         document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id.replace('btn-','') === followingId));
     }
 
-    // 自分の現在地を表示（省電力設定）
+    // 省電力現在地
     function updateUserLocation() {
         navigator.geolocation.getCurrentPosition((pos) => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            if (myLocationMarker) {
-                myLocationMarker.setLatLng([lat, lng]);
-            } else {
+            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            if (myLocationMarker) myLocationMarker.setLatLng([lat, lng]);
+            else {
                 const myIcon = L.divIcon({ className: 'my-location-dot', iconSize: [15, 15], iconAnchor: [7.5, 7.5] });
                 myLocationMarker = L.marker([lat, lng], { icon: myIcon }).addTo(map);
             }
-        }, (err) => { console.log("現在地取得エラー:", err); }, 
-        { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 });
+        }, null, { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 });
     }
     updateUserLocation();
     setInterval(updateUserLocation, 15000);
