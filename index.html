@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置ナビ - 観客用</title>
+    <title>山車位置ナビ - 観客用（現在地表示）</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -11,58 +11,30 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
         #map { height: 100vh; width: 100%; z-index: 1; background: #eee; }
-        
-        /* 左上メニュー */
         #admin-menu { position: fixed; top: 15px; left: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; width: 220px; }
         .menu-title { background: #333; color: white; padding: 12px; font-size: 15px; border-radius: 8px; font-weight: bold; text-align: center; }
+        
         .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; transition: 0.2s; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
+
+        /* リストボタン：オレンジ点滅 */
         .user-btn.performing-btn { background: #ffcc80 !important; color: #5d4037 !important; border-color: #ffa726 !important; animation: blink-orange 1.2s infinite; }
 
-        /* --- 【配置】現在地表示ボタン（フローティング） --- */
-        #my-location-btn {
-            position: fixed; bottom: 30px; right: 20px;
-            z-index: 2000; background: white; border: 2px solid #007bff;
-            border-radius: 50%; width: 60px; height: 60px;
-            display: flex; justify-content: center; align-items: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer;
-            font-size: 28px; transition: transform 0.1s;
-        }
-        #my-location-btn:active { transform: scale(0.9); }
+        /* ピンのラベル */
+        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333; }
+        .performing { border: 3px solid #ffa726 !important; background: #ffcc80 !important; color: #5d4037 !important; font-size: 18px !important; z-index: 1000 !important; animation: blink-orange 1.2s infinite; }
 
-        /* ラベル（密着補正なしの標準設定） */
-        .viewer-label { 
-            background: white !important; border: 2px solid #007bff !important; 
-            border-radius: 5px !important; padding: 4px 12px !important; 
-            font-weight: bold !important; font-size: 14px !important; 
-            color: #333 !important; white-space: nowrap; 
-        }
+        @keyframes blink-orange { 0%, 100% { background: #ffcc80; box-shadow: 0 0 5px #ffcc80; } 50% { background: #ffb74d; box-shadow: 0 0 15px #ffa726; } }
 
-        /* 共演中のオレンジ点滅ラベル */
-        .performing { 
-            background: #ffcc80 !important; border: 3px solid #ffa726 !important; 
-            color: #5d4037 !important; font-size: 17px !important; z-index: 1000 !important;
-            animation: glow-orange-blink 1.2s infinite ease-in-out !important;
+        /* --- 【新設】自分の現在地（青いドット）のスタイル --- */
+        .my-location-dot {
+            width: 15px; height: 15px; background: #007bff; border: 2px solid white; border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0,123,255,0.6);
         }
-
-        @keyframes glow-orange-blink {
-            0%, 100% { background: #ffcc80 !important; box-shadow: 0 0 10px #ffa726 !important; transform: scale(1); }
-            50% { background: #ffe0b2 !important; box-shadow: 0 0 25px #ff9800, 0 0 40px #ffa726 !important; transform: scale(1.1); }
-        }
-
-        @keyframes blink-orange { 0%, 100% { background: #ffcc80; } 50% { background: #ffb74d; } }
-        .my-location-dot { width: 15px; height: 15px; background: #007bff; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,123,255,0.6); }
     </style>
 </head>
 <body>
-
-    <div id="admin-menu">
-        <div class="menu-title">山車区を選択</div>
-        <div id="button-list"></div>
-    </div>
-
-    <div id="my-location-btn" onclick="showMyLocation()">🎯</div>
-
+    <div id="admin-menu"><div class="menu-title">山車区を選択</div><div id="button-list"></div></div>
     <div id="map"></div>
 
     <script>
@@ -81,7 +53,8 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {}, lastUpdateTimes = {};
-    let followingId = null, myLocationMarker = null;
+    let followingId = null;
+    let myLocationMarker = null; // 自分の現在地マーカー
 
     // 13秒物理削除クリーナー
     setInterval(async () => {
@@ -89,23 +62,25 @@
         for (let id in lastUpdateTimes) {
             if (now - lastUpdateTimes[id] > 13000) {
                 try { await db.collection("locations").doc(id).delete(); } catch (e) {}
-                if (markers[id]) map.removeLayer(markers[id]);
-                delete markers[id]; delete lastUpdateTimes[id];
-                const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
+                removeUI(id);
             }
         }
     }, 2000);
 
+    function removeUI(id) {
+        if (markers[id]) map.removeLayer(markers[id]);
+        delete markers[id]; delete lastUpdateTimes[id];
+        const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
+        if (followingId === id) followingId = null;
+    }
+
     db.collection("locations").onSnapshot(snapshot => {
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data(), id = change.doc.id;
-            if (change.type === "removed" || !data) return;
+            if (change.type === "removed" || !data) { removeUI(id); return; }
+
             lastUpdateTimes[id] = Date.now();
             const pos = [data.lat, data.lng];
-
-            const isPerforming = (data.status === "ON");
-            const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
-            const labelClass = isPerforming ? "viewer-label performing" : "viewer-label";
 
             let btn = document.getElementById('btn-' + id);
             if (!btn) {
@@ -117,11 +92,16 @@
                 };
                 document.getElementById('button-list').appendChild(btn);
             }
+            
+            const isPerforming = (data.status === "ON");
             btn.classList.toggle('performing-btn', isPerforming);
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
+            const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
+            const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
+            
             if (markers[id]) {
-                markers[id].setLatLng(pos).unbindTooltip().bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+                markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
             } else {
                 markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
             }
@@ -134,26 +114,31 @@
         document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id.replace('btn-','') === followingId));
     }
 
-    // 自分の現在地にジャンプ
-    function showMyLocation() {
-        if (myLocationMarker) {
-            map.flyTo(myLocationMarker.getLatLng(), 17);
-        }
-    }
-
+    // --- 【修正】自分の現在地を表示（省電力設定） ---
     function updateUserLocation() {
         navigator.geolocation.getCurrentPosition((pos) => {
-            const lat = pos.coords.latitude, lng = pos.coords.longitude;
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+
             if (myLocationMarker) {
                 myLocationMarker.setLatLng([lat, lng]);
             } else {
+                // 初回作成
                 const myIcon = L.divIcon({ className: 'my-location-dot', iconSize: [15, 15], iconAnchor: [7.5, 7.5] });
                 myLocationMarker = L.marker([lat, lng], { icon: myIcon }).addTo(map);
             }
-        }, null, { enableHighAccuracy: false, maximumAge: 30000, timeout: 15000 });
+        }, (err) => {
+            console.log("現在地取得エラー:", err);
+        }, { 
+            enableHighAccuracy: false, // バッテリー節約のためGPSをフル稼働させない
+            maximumAge: 30000,         // 30秒前の位置情報を許容
+            timeout: 15000 
+        });
     }
-    
+
+    // 初回実行
     updateUserLocation();
+    // 15秒おきに自分の場所を更新（バッテリーと地図の正確さのバランス）
     setInterval(updateUserLocation, 15000);
     </script>
 </body>
