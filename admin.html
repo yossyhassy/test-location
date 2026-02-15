@@ -3,20 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>山車位置配信 - モバイル最適化版</title>
+    <title>山車位置配信 - 20m接近検知版</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
-        /* --- 【重要】高さを dvh に変更して見切れを防止 --- */
         body, html { 
-            margin: 0; padding: 0; 
-            height: 100dvh; /* 動的な画面高さに対応 */
+            margin: 0; padding: 0; height: 100dvh; 
             font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; 
         }
-
-        /* ログイン画面の調整 */
         #login-container {
             position: fixed; top: 0; left: 0; width: 100%; height: 100dvh;
             background: linear-gradient(135deg, #b22222, #000);
@@ -34,21 +30,19 @@
         .user-btn { background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px; padding: 6px; font-size: 10px; font-weight: bold; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* --- 【修正】下部パネルの位置と余白 --- */
         #floating-panel { 
-            position: absolute; 
-            bottom: calc(15px + env(safe-area-inset-bottom)); /* セーフエリア分を底上げ */
-            left: 50%; transform: translateX(-50%); 
-            width: 92%; max-width: 360px; z-index: 2000; 
-            background: rgba(0, 0, 0, 0.88); border: 2px solid #b22222; 
-            border-radius: 15px; padding: 10px; 
-            box-shadow: 0 5px 20px rgba(0,0,0,0.5); 
-            backdrop-filter: blur(8px);
+            position: absolute; bottom: calc(15px + env(safe-area-inset-bottom)); 
+            left: 50%; transform: translateX(-50%); width: 92%; max-width: 360px; z-index: 2000; 
+            background: rgba(0, 0, 0, 0.88); border: 2px solid #b22222; border-radius: 15px; padding: 10px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5); backdrop-filter: blur(8px);
         }
 
         #active-name { font-size: 13px; font-weight: bold; color: #ffc107; margin-bottom: 4px; text-align: center; }
+        
+        /* 黄色パネル・黒文字の共演スイッチ */
         #coperform-ask { background: #ffc107; color: #000; border-radius: 10px; padding: 8px; margin-bottom: 8px; text-align: center; display: none; }
         .ask-btn { padding: 8px 20px; border-radius: 6px; border: none; font-weight: bold; background: #000; color: #ffc107; margin-top: 5px; font-size: 13px; }
+        
         #coperform-status { font-size: 14px; color: #fff; background: #b22222; font-weight: bold; margin-bottom: 6px; text-align: center; display: none; padding: 6px; border-radius: 6px; animation: blink 1s infinite; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
@@ -82,7 +76,6 @@
         </div>
     </div>
     <script>
-    // ... (Firebase設定とJavaScriptコードは前回と同じなので維持) ...
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
         authDomain: "my-location-app-6812a.firebaseapp.com",
@@ -147,7 +140,7 @@
     }
 
     async function stopAdmin(withConfirm) {
-        if (withConfirm && !confirm("終了しますか？")) return;
+        if (withConfirm && !confirm("配信を終了しますか？")) return;
         clearInterval(updateInterval);
         try { await db.collection("locations").doc(myId).delete(); location.reload(); } catch (e) { location.reload(); }
     }
@@ -170,7 +163,9 @@
                 if (change.type === "removed") { removeOtherUI(id); return; }
                 const pos = [data.lat, data.lng];
                 lastUpdateOthers[id] = Date.now();
-                if (myMarker && myMarker.getLatLng().distanceTo(L.latLng(pos)) < 10) nearby = true;
+                
+                // --- 【変更箇所】接近検知を20メートルに変更 ---
+                if (myMarker && myMarker.getLatLng().distanceTo(L.latLng(pos)) < 20) nearby = true;
 
                 if (!otherMarkers[id]) {
                     otherMarkers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { permanent: true, direction: 'top', className: 'other-label' });
