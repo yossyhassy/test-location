@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置ナビ（標準版）</title>
+    <title>山車位置ナビ - 観客用（13秒タイムアウト）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -28,16 +28,28 @@
         .user-btn {
             background: white; border: 3px solid #007bff; border-radius: 10px;
             padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15); text-align: left; transition: 0.2s;
+            text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
-        /* 追跡中のスタイル */
-        .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
-
-        /* ピンの上の名前ラベル */
+        .user-btn.following { background: #ffc107; border-color: #ff8f00; }
+        
+        /* ラベルの基本設定 */
         .viewer-label { 
             background: white; border: 2px solid #007bff; border-radius: 5px; 
-            padding: 3px 10px; font-weight: bold; font-size: 14px; color: #333;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            padding: 3px 10px; font-weight: bold; font-size: 14px; color: #333; 
+        }
+
+        /* --- 共演中の特別スタイル --- */
+        .performing { 
+            border: 3px solid #b22222 !important; 
+            background: #fff0f0 !important; 
+            color: #b22222 !important; 
+            font-size: 16px !important;
+            animation: pulse-red 1.5s infinite; 
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(178, 34, 34, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(178, 34, 34, 0); }
+            100% { transform: scale(1); }
         }
     </style>
 </head>
@@ -63,122 +75,82 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // 富岡市役所スタート
     const map = L.map('map').setView([36.2598, 138.8900], 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {};
-    const userPaths = {}; 
-    const pathLayers = {};
-    const lastUpdateTimes = {};
+    const lastUpdateTimes = {}; 
     let followingId = null; 
 
-    // 追跡切り替え
-    function toggleFollow(id) {
-        if (followingId === id) {
-            followingId = null;
-        } else {
-            followingId = id;
-            if (markers[id]) map.flyTo(markers[id].getLatLng(), 17);
-        }
-        updateButtonStyles();
+    function updateUI() {
+        document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id === 'btn-' + followingId));
     }
 
-    function updateButtonStyles() {
-        document.querySelectorAll('.user-btn').forEach(btn => {
-            btn.classList.toggle('following', btn.id === 'btn-' + followingId);
-            const id = btn.id.replace('btn-', '');
-            const name = markers[id] ? markers[id].options.title : "山車";
-            btn.innerText = (followingId === id ? "👀 追跡中: " : "📍 ") + name;
-        });
-    }
-
-    async function deleteFromDB(id) {
-        try { await db.collection("locations").doc(id).delete(); } catch (e) {}
-    }
-
-    // 25秒おきの生存チェック & DB掃除
+    // --- 【重要】13秒お掃除タイマー ---
     setInterval(() => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
-            if (now - lastUpdateTimes[id] > 25000) {
-                removeUserUI(id);
-                deleteFromDB(id);
+            // 13秒（13,000ms）以上更新がない場合
+            if (now - lastUpdateTimes[id] > 13000) {
+                console.log(id + " を13秒タイムアウトで削除します");
+                if (markers[id]) map.removeLayer(markers[id]);
+                delete markers[id];
                 delete lastUpdateTimes[id];
+                const btn = document.getElementById('btn-' + id);
+                if (btn) btn.remove();
                 if (followingId === id) followingId = null;
             }
         }
-    }, 5000);
+    }, 2000); // 見回りは2秒おき
 
-    // 足跡消去（30秒）
-    setInterval(() => {
-        const now = Date.now();
-        for (let id in userPaths) {
-            userPaths[id] = userPaths[id].filter(p => (now - p.time) < 30000);
-            if (pathLayers[id]) {
-                pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
-                if (userPaths[id].length < 2) map.removeLayer(pathLayers[id]);
-            }
-        }
-    }, 3000);
-
-    // 監視処理
     db.collection("locations").onSnapshot(snapshot => {
         const buttonList = document.getElementById('button-list');
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
 
-            if (!data || !data.name || change.type === "removed") {
-                removeUserUI(id);
+            if (change.type === "removed" || !data || !data.name) {
+                if (markers[id]) map.removeLayer(markers[id]);
+                delete markers[id];
+                delete lastUpdateTimes[id];
+                const btn = document.getElementById('btn-' + id);
+                if (btn) btn.remove();
+                if (followingId === id) followingId = null;
                 return;
             }
 
             const pos = [data.lat, data.lng];
-            if (change.type === "added" || change.type === "modified") {
-                lastUpdateTimes[id] = Date.now();
+            lastUpdateTimes[id] = Date.now(); // 更新時刻を記録
 
-                // オートフォロー
-                if (followingId === id) map.panTo(pos);
+            if (followingId === id) map.panTo(pos);
 
-                // ボタン更新
-                let btn = document.getElementById('btn-' + id);
-                if (!btn) {
-                    btn = document.createElement('button');
-                    btn.id = 'btn-' + id;
-                    btn.className = 'user-btn';
-                    btn.onclick = () => toggleFollow(id);
-                    buttonList.appendChild(btn);
-                }
-                updateButtonStyles();
+            let btn = document.getElementById('btn-' + id);
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = 'btn-' + id;
+                btn.className = 'user-btn';
+                btn.onclick = () => {
+                    followingId = (followingId === id) ? null : id;
+                    if (followingId && markers[id]) map.flyTo(markers[id].getLatLng(), 17);
+                    updateUI();
+                };
+                buttonList.appendChild(btn);
+            }
+            btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (data.status ? " " + data.status : "");
 
-                // 足跡
-                if (!userPaths[id]) userPaths[id] = [];
-                userPaths[id].push({ pos, time: Date.now() });
-                if (pathLayers[id]) {
-                    pathLayers[id].setLatLngs(userPaths[id].map(p => p.pos));
-                    if (userPaths[id].length >= 2) pathLayers[id].addTo(map);
-                } else {
-                    pathLayers[id] = L.polyline([], {color: 'red', weight: 1.5, opacity: 0.7}).addTo(map);
-                }
-                
-                // 【標準マーカー】画像アイコン処理を削除し、標準の青いピンへ
-                if (markers[id]) {
-                    markers[id].setLatLng(pos).getTooltip().setContent(data.name);
-                } else {
-                    markers[id] = L.marker(pos, { title: data.name }).addTo(map)
-                        .bindTooltip(data.name, { permanent: true, direction: 'top', className: 'viewer-label' });
-                }
+            // ラベルの内容とスタイルを動的に変更
+            const labelContent = data.status ? `🥁${data.name} 共演中🥁` : data.name;
+            const labelClass = "viewer-label" + (data.status ? " performing" : "");
+
+            if (markers[id]) {
+                markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
+            } else {
+                markers[id] = L.marker(pos).addTo(map)
+                    .bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
             }
         });
+        updateUI();
     });
-
-    function removeUserUI(id) {
-        const btn = document.getElementById('btn-' + id);
-        if (btn) btn.remove();
-        if (markers[id]) { map.removeLayer(markers[id]); delete markers[id]; }
-        if (pathLayers[id]) { map.removeLayer(pathLayers[id]); delete pathLayers[id]; }
-    }
     </script>
 </body>
 </html>
