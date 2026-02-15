@@ -17,23 +17,25 @@
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
         .user-btn.performing-btn { background: #ffcc80 !important; color: #5d4037 !important; border-color: #ffa726 !important; animation: blink-orange 1.2s infinite; }
 
-        /* ツールチップの土台補正 */
-        .leaflet-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
-        .leaflet-tooltip-top::before { display: none !important; }
+        /* --- 削除: ツールチップの土台補正 --- */
+        /* .leaflet-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; } */
+        /* .leaflet-tooltip-top::before { display: none !important; } */
 
         /* 通常ラベル */
         .viewer-label { 
             background: white !important; border: 2px solid #007bff !important; 
             border-radius: 5px !important; padding: 4px 12px !important; 
             font-weight: bold !important; font-size: 14px !important; 
-            color: #333 !important; white-space: nowrap; margin-top: -5px !important;
+            color: #333 !important; white-space: nowrap; 
+            /* margin-top: -5px !important;  <-- 削除 */
         }
 
         /* --- 【演出】共演中のオレンジ点滅ラベル --- */
         .performing { 
             background: #ffcc80 !important; border: 3px solid #ffa726 !important; 
             color: #5d4037 !important; font-size: 17px !important; z-index: 1000 !important;
-            transform-origin: center bottom !important; margin-top: -10px !important;
+            /* transform-origin: center bottom !important; <-- 削除 */
+            /* margin-top: -10px !important; <-- 削除 */
             animation: glow-orange-blink 1.2s infinite ease-in-out !important;
         }
 
@@ -101,9 +103,11 @@
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
             if (markers[id]) {
-                markers[id].setLatLng(pos).unbindTooltip().bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass, offset:[0,0] });
+                // offset: [0,0] を削除
+                markers[id].setLatLng(pos).unbindTooltip().bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
             } else {
-                markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass, offset:[0,0] });
+                // offset: [0,0] を削除
+                markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
             }
             if (followingId === id) map.panTo(pos);
         });
