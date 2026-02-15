@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置ナビ - 観客用（オレンジ版）</title>
+    <title>山車位置ナビ - 観客用</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -14,20 +14,24 @@
         #admin-menu { position: fixed; top: 15px; left: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; width: 220px; }
         .menu-title { background: #333; color: white; padding: 12px; font-size: 15px; border-radius: 8px; font-weight: bold; text-align: center; }
         
-        .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; }
+        .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; transition: all 0.2s; }
+        
+        /* 追跡中のスタイル */
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* --- 【修正】淡いオレンジの共演ボタン --- */
+        /* --- 淡いオレンジの共演ボタン（点滅） --- */
         .user-btn.performing-btn {
-            background: #ffcc80 !important; /* 淡いオレンジ */
-            color: #5d4037 !important;     /* 濃い茶色の文字で視認性確保 */
+            background: #ffcc80 !important;
+            color: #5d4037 !important;
             border-color: #ffa726 !important;
             animation: blink-orange 1.2s infinite;
         }
+        /* 追跡中かつ共演中の場合は、オレンジを優先しつつ枠を強調 */
+        .user-btn.following.performing-btn { border-color: #5d4037 !important; border-width: 4px; }
 
         .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333; }
 
-        /* --- 【修正】地図上の淡いオレンジ・パルス --- */
+        /* 地図上の淡いオレンジ・パルス */
         .performing { 
             border: 3px solid #ffa726 !important; 
             background: #ffcc80 !important; 
@@ -47,7 +51,6 @@
     <div id="admin-menu"><div class="menu-title">山車区を選択</div><div id="button-list"></div></div>
     <div id="map"></div>
     <script>
-    // ... (Firebase設定は前回と同様)
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
         authDomain: "my-location-app-6812a.firebaseapp.com",
@@ -64,7 +67,7 @@
     const markers = {}, lastUpdateTimes = {};
     let followingId = null; 
 
-    // 13秒お掃除
+    // 13秒お掃除タイマー
     setInterval(() => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
@@ -72,6 +75,7 @@
                 if (markers[id]) map.removeLayer(markers[id]);
                 delete markers[id]; delete lastUpdateTimes[id];
                 const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
+                if (followingId === id) followingId = null;
             }
         }
     }, 2000);
@@ -84,6 +88,7 @@
             if (change.type === "removed" || !data) {
                 if (markers[id]) map.removeLayer(markers[id]); delete markers[id];
                 const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
+                if (followingId === id) followingId = null;
                 return;
             }
             lastUpdateTimes[id] = Date.now();
@@ -92,24 +97,42 @@
             let btn = document.getElementById('btn-' + id);
             if (!btn) {
                 btn = document.createElement('button'); btn.id = 'btn-' + id; btn.className = 'user-btn';
-                btn.onclick = () => { followingId = (followingId === id) ? null : id; updateUI(); };
+                // --- 【修正】ボタンクリック時の動作を共通化 ---
+                btn.onclick = () => {
+                    if (followingId === id) {
+                        followingId = null; // 追跡解除
+                    } else {
+                        followingId = id; // 新規追跡
+                        if (markers[id]) map.flyTo(markers[id].getLatLng(), 17);
+                    }
+                    updateUI();
+                };
                 buttonList.appendChild(btn);
             }
+            
             const isPerforming = (data.status === "ON");
             btn.classList.toggle('performing-btn', isPerforming);
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
             const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
             const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
-            if (markers[id]) markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
-            else markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+            
+            if (markers[id]) {
+                markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
+            } else {
+                markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+            }
             
             if (followingId === id) map.panTo(pos);
         });
         updateUI();
     });
+
     function updateUI() {
-        document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id === 'btn-' + followingId));
+        document.querySelectorAll('.user-btn').forEach(btn => {
+            const id = btn.id.replace('btn-', '');
+            btn.classList.toggle('following', id === followingId);
+        });
     }
     </script>
 </body>
