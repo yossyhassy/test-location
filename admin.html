@@ -2,31 +2,54 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車配信 - 管理（共演モード）</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>山車位置配信 - モバイル最適化版</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
-        #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #b22222, #000); display: flex; justify-content: center; align-items: center; z-index: 3000; }
+        /* --- 【重要】高さを dvh に変更して見切れを防止 --- */
+        body, html { 
+            margin: 0; padding: 0; 
+            height: 100dvh; /* 動的な画面高さに対応 */
+            font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; 
+        }
+
+        /* ログイン画面の調整 */
+        #login-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100dvh;
+            background: linear-gradient(135deg, #b22222, #000);
+            display: flex; justify-content: center; align-items: center; z-index: 3000;
+        }
         .login-card { background: white; padding: 30px; border-radius: 20px; text-align: center; width: 85%; max-width: 350px; }
         input[type="text"] { width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 16px; font-weight: bold; text-align: center; box-sizing: border-box; }
-        .start-btn { width: 100%; padding: 15px; background: #b22222; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; cursor: pointer; }
-        #admin-display { display: none; position: relative; width: 100%; height: 100vh; }
+        .start-btn { width: 100%; padding: 15px; background: #b22222; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: bold; }
+
+        #admin-display { display: none; position: relative; width: 100%; height: 100dvh; }
         #map { height: 100%; width: 100%; z-index: 1; }
-        #other-float-menu { position: absolute; top: 10px; left: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 5px; width: 120px; max-height: 40vh; overflow-y: auto; }
-        .menu-title { background: rgba(0,0,0,0.7); color: #aaa; padding: 4px; font-size: 9px; border-radius: 4px; text-align: center; }
-        .user-btn { background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px; padding: 6px; font-size: 10px; font-weight: bold; cursor: pointer; text-align: left; }
-        .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
-        #floating-panel { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 94%; max-width: 360px; z-index: 2000; background: rgba(0, 0, 0, 0.85); border: 1.5px solid #b22222; border-radius: 15px; padding: 8px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); backdrop-filter: blur(5px); }
-        #active-name { font-size: 13px; font-weight: bold; color: #ffc107; margin-bottom: 4px; text-align: center; }
         
-        /* 共演スイッチエリア */
-        #coperform-ask { display: none; background: #333; border: 2px solid #ffc107; border-radius: 10px; padding: 8px; margin-bottom: 8px; text-align: center; }
-        .ask-btn { padding: 8px 20px; border-radius: 5px; border: none; font-weight: bold; cursor: pointer; font-size: 14px; background: #28a745; color: white; }
-        #coperform-status { font-size: 14px; color: #fff; background: #b22222; font-weight: bold; margin-bottom: 6px; text-align: center; display: none; padding: 4px; border-radius: 6px; animation: blink 1s infinite; cursor: pointer; }
+        #other-float-menu { position: absolute; top: 10px; left: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 5px; width: 120px; max-height: 35dvh; overflow-y: auto; }
+        .menu-title { background: rgba(0,0,0,0.7); color: #aaa; padding: 4px; font-size: 9px; border-radius: 4px; text-align: center; }
+        .user-btn { background: rgba(255, 255, 255, 0.9); border: 1.5px solid #007bff; border-radius: 6px; padding: 6px; font-size: 10px; font-weight: bold; }
+        .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
+
+        /* --- 【修正】下部パネルの位置と余白 --- */
+        #floating-panel { 
+            position: absolute; 
+            bottom: calc(15px + env(safe-area-inset-bottom)); /* セーフエリア分を底上げ */
+            left: 50%; transform: translateX(-50%); 
+            width: 92%; max-width: 360px; z-index: 2000; 
+            background: rgba(0, 0, 0, 0.88); border: 2px solid #b22222; 
+            border-radius: 15px; padding: 10px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5); 
+            backdrop-filter: blur(8px);
+        }
+
+        #active-name { font-size: 13px; font-weight: bold; color: #ffc107; margin-bottom: 4px; text-align: center; }
+        #coperform-ask { background: #ffc107; color: #000; border-radius: 10px; padding: 8px; margin-bottom: 8px; text-align: center; display: none; }
+        .ask-btn { padding: 8px 20px; border-radius: 6px; border: none; font-weight: bold; background: #000; color: #ffc107; margin-top: 5px; font-size: 13px; }
+        #coperform-status { font-size: 14px; color: #fff; background: #b22222; font-weight: bold; margin-bottom: 6px; text-align: center; display: none; padding: 6px; border-radius: 6px; animation: blink 1s infinite; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
         #status-monitor { background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 6px; font-family: monospace; font-size: 8px; color: #00ff00; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 6px; }
@@ -34,20 +57,21 @@
         .follow-toggle { background: #444; border: none; color: white; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; }
         .follow-toggle.active { background: #28a745; }
         .stop-btn { background: #dc3545; border: none; color: white; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; }
+
         .admin-label { background: white; border: 1.5px solid #b22222; border-radius: 4px; padding: 2px 5px; font-weight: bold; color: #b22222; font-size: 10px; }
         .other-label { background: white; border: 1.5px solid #007bff; border-radius: 4px; padding: 2px 5px; font-weight: bold; color: #007bff; font-size: 10px; }
     </style>
 </head>
 <body>
-    <div id="login-container"><div class="login-card"><h2>山車位置配信</h2><input type="text" id="admin-name" placeholder="山車区名"><button class="start-btn" onclick="startAdmin()">配信を開始する</button></div></div>
+    <div id="login-container"><div class="login-card"><h2 style="color:#b22222; margin:0 0 20px;">山車位置配信</h2><input type="text" id="admin-name" placeholder="山車区名"><button class="start-btn" onclick="startAdmin()">配信を開始する</button></div></div>
     <div id="admin-display">
         <div id="map"></div>
         <div id="other-float-menu"><div class="menu-title">他山車を追跡</div><div id="button-list"></div></div>
         <div id="floating-panel">
             <div id="active-name"></div>
-            <div id="coperform-status" onclick="setCoPerformance(false)">🥁 お囃子共演中 (タップで終了) 🥁</div>
+            <div id="coperform-status" onclick="setCoPerformance(false)">🥁 お囃子共演中 (終了) 🥁</div>
             <div id="coperform-ask">
-                <div id="ask-text" style="font-size:12px; font-weight:bold; margin-bottom:5px;">お囃子共演中？</div>
+                <div style="font-size:13px; font-weight:bold;">お囃子共演中？</div>
                 <button class="ask-btn" onclick="setCoPerformance(true)">ONにする</button>
             </div>
             <div id="status-monitor">
@@ -58,6 +82,7 @@
         </div>
     </div>
     <script>
+    // ... (Firebase設定とJavaScriptコードは前回と同じなので維持) ...
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
         authDomain: "my-location-app-6812a.firebaseapp.com",
@@ -115,7 +140,7 @@
     function startWatchdog() {
         lastSuccessTime = Date.now();
         setInterval(() => {
-            if (Date.now() - lastSuccessTime > 13000) stopAdmin(false); // 13秒ルール
+            if (Date.now() - lastSuccessTime > 13000) stopAdmin(false);
             const now = Date.now();
             for (let id in lastUpdateOthers) if (now - lastUpdateOthers[id] > 13000) removeOtherUI(id);
         }, 2000);
@@ -143,30 +168,21 @@
                 const data = change.doc.data(), id = change.doc.id;
                 if (id === myId || !data) return;
                 if (change.type === "removed") { removeOtherUI(id); return; }
-
                 const pos = [data.lat, data.lng];
                 lastUpdateOthers[id] = Date.now();
-
-                if (myMarker) {
-                    const dist = myMarker.getLatLng().distanceTo(L.latLng(pos));
-                    if (dist < 10) nearby = true; // 10メートル以内検知
-                }
+                if (myMarker && myMarker.getLatLng().distanceTo(L.latLng(pos)) < 10) nearby = true;
 
                 if (!otherMarkers[id]) {
                     otherMarkers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { permanent: true, direction: 'top', className: 'other-label' });
                     const btn = document.createElement('button'); btn.id = 'btn-' + id; btn.className = 'user-btn';
                     btn.onclick = () => toggleFollowOther(id); btn.innerText = "📍 " + data.name;
                     document.getElementById('button-list').appendChild(btn);
-                } else {
-                    otherMarkers[id].setLatLng(pos);
-                }
+                } else { otherMarkers[id].setLatLng(pos); }
                 if (followingOtherId === id) map.panTo(pos);
             });
-            // 共演ボタンの表示制御
             if (nearby && !isCoPerforming) document.getElementById('coperform-ask').style.display = 'block';
             else document.getElementById('coperform-ask').style.display = 'none';
         });
-
         sendLocation();
         updateInterval = setInterval(sendLocation, 5000);
     }
@@ -178,17 +194,11 @@
             document.getElementById('mon-lng').innerText = lng.toFixed(5);
             document.getElementById('mon-acc').innerText = `±${Math.round(pos.coords.accuracy)}m`;
             document.getElementById('mon-time').innerText = new Date().toLocaleTimeString('ja-JP', {hour12: false});
-            
-            db.collection("locations").doc(myId).set({ 
-                lat, lng, name: myName, 
-                status: isCoPerforming ? "ON" : "", 
-                timestamp: firebase.firestore.FieldValue.serverTimestamp() 
-            }).then(() => { lastSuccessTime = Date.now(); });
-
+            db.collection("locations").doc(myId).set({ lat, lng, name: myName, status: isCoPerforming ? "ON" : "", timestamp: firebase.firestore.FieldValue.serverTimestamp() }).then(() => { lastSuccessTime = Date.now(); });
             if (isAutoFollow) map.panTo([lat, lng]);
             if (!myMarker) myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { permanent: true, direction: 'top', className: 'admin-label' });
             else myMarker.setLatLng([lat, lng]);
-        }, null, { enableHighAccuracy: true });
+        }, null, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
     </script>
 </body>
