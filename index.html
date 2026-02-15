@@ -3,84 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置ナビ - 観客用（メニュー連動版）</title>
-
+    <title>山車位置ナビ - 観客用（オレンジ版）</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-
     <style>
         body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; }
         #map { height: 100vh; width: 100%; z-index: 1; background: #eee; }
-
-        /* 左上のメニュー */
-        #admin-menu {
-            position: fixed; top: 15px; left: 15px;
-            z-index: 2000; display: flex; flex-direction: column; gap: 10px;
-            width: 220px;
-        }
-        .menu-title {
-            background: #333; color: white; padding: 12px;
-            font-size: 15px; border-radius: 8px; font-weight: bold; text-align: center;
-        }
-        .user-btn {
-            background: white; border: 3px solid #007bff; border-radius: 10px;
-            padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer;
-            text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            transition: all 0.3s;
-        }
-        /* 追跡中のスタイル */
+        #admin-menu { position: fixed; top: 15px; left: 15px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; width: 220px; }
+        .menu-title { background: #333; color: white; padding: 12px; font-size: 15px; border-radius: 8px; font-weight: bold; text-align: center; }
+        
+        .user-btn { background: white; border: 3px solid #007bff; border-radius: 10px; padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer; text-align: left; }
         .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* --- 【新設】メニューボタンの共演中スタイル --- */
+        /* --- 【修正】淡いオレンジの共演ボタン --- */
         .user-btn.performing-btn {
-            background: #ff0000 !important;
-            color: #ffffff !important;
-            border-color: #b22222 !important;
-            /* 赤く点滅させる */
-            animation: blink-sidebar 0.8s infinite alternate;
-        }
-        @keyframes blink-sidebar {
-            from { background: #ff0000; box-shadow: 0 0 5px #ff0000; }
-            to { background: #b22222; box-shadow: 0 0 15px #ff0000; }
+            background: #ffcc80 !important; /* 淡いオレンジ */
+            color: #5d4037 !important;     /* 濃い茶色の文字で視認性確保 */
+            border-color: #ffa726 !important;
+            animation: blink-orange 1.2s infinite;
         }
 
-        /* ラベルの基本スタイル */
-        .viewer-label { 
-            background: white; border: 2px solid #007bff; border-radius: 5px; 
-            padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333;
-            transition: all 0.3s ease;
-        }
+        .viewer-label { background: white; border: 2px solid #007bff; border-radius: 5px; padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333; }
 
-        /* 地図上のパルスアニメーション */
+        /* --- 【修正】地図上の淡いオレンジ・パルス --- */
         .performing { 
-            border: 3px solid #ff0000 !important; 
-            background: #ff0000 !important; 
-            color: #ffffff !important; 
+            border: 3px solid #ffa726 !important; 
+            background: #ffcc80 !important; 
+            color: #5d4037 !important; 
             font-size: 18px !important;
-            box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
-            animation: pulse-red 1.5s infinite ease-in-out; 
+            animation: blink-orange 1.2s infinite; 
             z-index: 1000 !important;
         }
 
-        @keyframes pulse-red {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
-            50% { transform: scale(1.15); box-shadow: 0 0 0 15px rgba(255, 0, 0, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+        @keyframes blink-orange {
+            0%, 100% { background: #ffcc80; box-shadow: 0 0 5px #ffcc80; }
+            50% { background: #ffb74d; box-shadow: 0 0 15px #ffa726; }
         }
     </style>
 </head>
 <body>
-
-    <div id="admin-menu">
-        <div class="menu-title">山車区を選択（追跡）</div>
-        <div id="button-list"></div>
-    </div>
-
+    <div id="admin-menu"><div class="menu-title">山車区を選択</div><div id="button-list"></div></div>
     <div id="map"></div>
-
     <script>
+    // ... (Firebase設定は前回と同様)
     const firebaseConfig = {
         apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
         authDomain: "my-location-app-6812a.firebaseapp.com",
@@ -91,14 +58,13 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-
     const map = L.map('map').setView([36.2598, 138.8900], 16);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const markers = {}, lastUpdateTimes = {};
     let followingId = null; 
 
-    // 13秒お掃除タイマー
+    // 13秒お掃除
     setInterval(() => {
         const now = Date.now();
         for (let id in lastUpdateTimes) {
@@ -106,7 +72,6 @@
                 if (markers[id]) map.removeLayer(markers[id]);
                 delete markers[id]; delete lastUpdateTimes[id];
                 const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
-                if (followingId === id) followingId = null;
             }
         }
     }, 2000);
@@ -116,45 +81,33 @@
         snapshot.docChanges().forEach(change => {
             const data = change.doc.data();
             const id = change.doc.id;
-            if (change.type === "removed" || !data || !data.name) {
+            if (change.type === "removed" || !data) {
                 if (markers[id]) map.removeLayer(markers[id]); delete markers[id];
                 const btn = document.getElementById('btn-' + id); if (btn) btn.remove();
                 return;
             }
-
-            const pos = [data.lat, data.lng];
             lastUpdateTimes[id] = Date.now();
-            if (followingId === id) map.panTo(pos);
+            const pos = [data.lat, data.lng];
 
             let btn = document.getElementById('btn-' + id);
             if (!btn) {
                 btn = document.createElement('button'); btn.id = 'btn-' + id; btn.className = 'user-btn';
-                btn.onclick = () => {
-                    followingId = (followingId === id) ? null : id;
-                    if (followingId && markers[id]) map.flyTo(markers[id].getLatLng(), 17);
-                    updateUI();
-                };
+                btn.onclick = () => { followingId = (followingId === id) ? null : id; updateUI(); };
                 buttonList.appendChild(btn);
             }
-
-            // --- 【追加】共演中の状態に応じてボタンのクラスを切り替え ---
             const isPerforming = (data.status === "ON");
             btn.classList.toggle('performing-btn', isPerforming);
             btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
 
             const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
             const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
-
-            if (markers[id]) {
-                markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
-            } else {
-                markers[id] = L.marker(pos).addTo(map)
-                    .bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
-            }
+            if (markers[id]) markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
+            else markers[id] = L.marker(pos).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+            
+            if (followingId === id) map.panTo(pos);
         });
         updateUI();
     });
-
     function updateUI() {
         document.querySelectorAll('.user-btn').forEach(btn => btn.classList.toggle('following', btn.id === 'btn-' + followingId));
     }
