@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>山車位置ナビ - 観客用（共演ハイライト）</title>
+    <title>山車位置ナビ - 観客用（メニュー連動版）</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -28,24 +28,38 @@
             background: white; border: 3px solid #007bff; border-radius: 10px;
             padding: 15px; font-size: 17px; font-weight: bold; cursor: pointer;
             text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s;
         }
-        .user-btn.following { background: #ffc107; border-color: #ff8f00; }
+        /* 追跡中のスタイル */
+        .user-btn.following { background: #ffc107; border-color: #ff8f00; color: #000; }
 
-        /* --- ラベルの基本スタイル --- */
+        /* --- 【新設】メニューボタンの共演中スタイル --- */
+        .user-btn.performing-btn {
+            background: #ff0000 !important;
+            color: #ffffff !important;
+            border-color: #b22222 !important;
+            /* 赤く点滅させる */
+            animation: blink-sidebar 0.8s infinite alternate;
+        }
+        @keyframes blink-sidebar {
+            from { background: #ff0000; box-shadow: 0 0 5px #ff0000; }
+            to { background: #b22222; box-shadow: 0 0 15px #ff0000; }
+        }
+
+        /* ラベルの基本スタイル */
         .viewer-label { 
             background: white; border: 2px solid #007bff; border-radius: 5px; 
             padding: 4px 12px; font-weight: bold; font-size: 14px; color: #333;
             transition: all 0.3s ease;
         }
 
-        /* --- 【劇的変化】共演中のパルスアニメーション --- */
+        /* 地図上のパルスアニメーション */
         .performing { 
             border: 3px solid #ff0000 !important; 
             background: #ff0000 !important; 
             color: #ffffff !important; 
             font-size: 18px !important;
             box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
-            /* 1.5秒周期で拡大・縮小を繰り返す */
             animation: pulse-red 1.5s infinite ease-in-out; 
             z-index: 1000 !important;
         }
@@ -122,12 +136,14 @@
                 };
                 buttonList.appendChild(btn);
             }
-            // ボタンのテキスト更新（共演中は絵文字付き）
-            btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (data.status === "ON" ? " 🥁共演中" : "");
 
-            // ラベルの更新（共演中はアニメーションクラス performing を付与）
-            const labelContent = data.status === "ON" ? `🥁${data.name} 共演中🥁` : data.name;
-            const labelClass = "viewer-label" + (data.status === "ON" ? " performing" : "");
+            // --- 【追加】共演中の状態に応じてボタンのクラスを切り替え ---
+            const isPerforming = (data.status === "ON");
+            btn.classList.toggle('performing-btn', isPerforming);
+            btn.innerText = (followingId === id ? "👀 " : "📍 ") + data.name + (isPerforming ? " 🥁共演中" : "");
+
+            const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
+            const labelClass = "viewer-label" + (isPerforming ? " performing" : "");
 
             if (markers[id]) {
                 markers[id].setLatLng(pos).getTooltip().setContent(labelContent).setClassName(labelClass);
