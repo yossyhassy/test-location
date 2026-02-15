@@ -4,50 +4,49 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>山車位置配信 - 管理ツール</title>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
     <style>
         body, html { margin: 0; padding: 0; height: 100dvh; font-family: sans-serif; background: #1a1a1a; color: white; overflow: hidden; }
         #login-container { position: fixed; top: 0; left: 0; width: 100%; height: 100dvh; background: linear-gradient(135deg, #b22222, #000); display: flex; justify-content: center; align-items: center; z-index: 3000; }
         .login-card { background: white; padding: 25px; border-radius: 20px; text-align: center; width: 85%; max-width: 350px; color: #333; }
         input[type="text"] { width: 100%; padding: 15px; margin-bottom: 15px; border: 2px solid #ddd; border-radius: 12px; font-size: 18px; font-weight: bold; text-align: center; box-sizing: border-box; }
-        .start-btn { width: 100%; padding: 15px; background: #b22222; color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; }
-        #start-msg { font-size: 12px; color: #666; margin-top: 10px; min-height: 1.2em; }
+        .start-btn { width: 100%; padding: 15px; background: #b22222; color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; }
 
         #admin-display { display: none; position: relative; width: 100%; height: 100dvh; }
         #map { height: 100%; width: 100%; z-index: 1; }
         
-        /* --- 削除: ツールチップ補正 --- */
-        /* .leaflet-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; } */
-        /* .leaflet-tooltip-top::before { display: none !important; } */
+        /* --- ツールチップの位置修正 --- */
+        .leaflet-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
+        .leaflet-tooltip-top::before { display: none !important; } /* 矢印を消す */
 
         .admin-label { 
-            background: white !important; border: 2px solid #b22222 !important; border-radius: 4px !important; padding: 2px 6px !important; font-weight: bold !important; color: #b22222 !important; font-size: 11px !important; 
-            /* margin-top: -5px !important; <-- 削除 */
-            white-space: nowrap; 
+            background: white !important; border: 2px solid #b22222 !important; 
+            border-radius: 4px !important; padding: 2px 6px !important; 
+            font-weight: bold !important; color: #b22222 !important; font-size: 11px !important;
+            margin-top: -5px !important; /* ピンの先端に密着させる */
+            white-space: nowrap;
         }
         .other-label { 
-            background: white !important; border: 2px solid #007bff !important; border-radius: 4px !important; padding: 2px 6px !important; font-weight: bold !important; color: #007bff !important; font-size: 11px !important; 
-            /* margin-top: -5px !important; <-- 削除 */
-            white-space: nowrap; 
+            background: white !important; border: 2px solid #007bff !important; 
+            border-radius: 4px !important; padding: 2px 6px !important; 
+            font-weight: bold !important; color: #007bff !important; font-size: 11px !important;
+            margin-top: -5px !important;
+            white-space: nowrap;
         }
 
-        .performing-label { 
-            background: #ffcc80 !important; border: 2px solid #ffa726 !important; 
-            color: #5d4037 !important; animation: glow-orange-admin 1.2s infinite !important;
-            /* transform-origin: center bottom !important; <-- 削除 */
-            /* margin-top: -10px !important; <-- 削除 */
-        }
-        @keyframes glow-orange-admin {
-            0%, 100% { background: #ffcc80; box-shadow: 0 0 5px #ffa726; transform: scale(1); }
-            50% { background: #ffe0b2; box-shadow: 0 0 15px #ffa726; transform: scale(1.05); }
-        }
-
+        /* パネル類 */
         #floating-panel { position: absolute; bottom: calc(15px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: 92%; max-width: 360px; z-index: 2000; background: rgba(0, 0, 0, 0.88); border: 1.5px solid #b22222; border-radius: 15px; padding: 10px; backdrop-filter: blur(8px); }
         #active-name { font-size: 14px; font-weight: bold; color: #ffc107; margin-bottom: 5px; text-align: center; }
-        #coperform-status { font-size: 14px; color: #5d4037; background: #ffcc80; font-weight: bold; margin-bottom: 6px; text-align: center; display: none; padding: 6px; border-radius: 6px; animation: blink-orange 1.2s infinite; cursor: pointer; }
+        #coperform-ask { background: #ffc107; color: #000; border-radius: 10px; padding: 8px; margin-bottom: 8px; text-align: center; display: none; }
+        .ask-btn { padding: 8px 20px; border-radius: 6px; border: none; font-weight: bold; background: #000; color: #ffc107; margin-top: 5px; font-size: 12px; }
+        #coperform-status { font-size: 14px; color: #fff; background: #b22222; font-weight: bold; margin-bottom: 6px; text-align: center; display: none; padding: 6px; border-radius: 6px; animation: blink 1.2s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        #status-monitor { background: rgba(255, 255, 255, 0.05); padding: 5px; border-radius: 6px; font-family: monospace; font-size: 8px; color: #00ff00; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 8px; }
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .follow-toggle { background: #444; border: none; color: white; padding: 10px; border-radius: 8px; font-size: 11px; font-weight: bold; }
         .follow-toggle.active { background: #28a745; }
@@ -55,65 +54,87 @@
     </style>
 </head>
 <body>
-    <div id="login-container"><div class="login-card"><h2>山車位置配信</h2><input type="text" id="admin-name" placeholder="山車区名"><button class="start-btn" id="start-button" onclick="startAdmin()">配信を開始する</button><div id="start-msg"></div></div></div>
+
+    <div id="login-container">
+        <div class="login-card">
+            <h2 style="color:#b22222; margin:0 0 20px;">山車位置配信</h2>
+            <input type="text" id="admin-name" placeholder="山車区名">
+            <button class="start-btn" onclick="startAdmin()">配信を開始する</button>
+        </div>
+    </div>
+
     <div id="admin-display">
         <div id="map"></div>
         <div id="floating-panel">
             <div id="active-name"></div>
             <div id="coperform-status" onclick="setCoPerformance(false)">🥁 お囃子共演中 (終了) 🥁</div>
+            <div id="coperform-ask"><div style="font-size:12px; font-weight:bold;">お囃子共演中？</div><button class="ask-btn" onclick="setCoPerformance(true)">ONにする</button></div>
+            <div id="status-monitor"><div>LAT: <span id="mon-lat">---</span></div><div>LNG: <span id="mon-lng">---</span></div><div>ACC: <span id="mon-acc">---</span></div><div>UPD: <span id="mon-time">---</span></div></div>
             <div class="btn-group"><button id="follow-btn" class="follow-toggle active" onclick="toggleAutoFollow()">自追跡:ON</button><button class="stop-btn" onclick="stopAdmin(true)">配信終了</button></div>
         </div>
     </div>
+
     <script>
-    const firebaseConfig = { apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY", authDomain: "my-location-app-6812a.firebaseapp.com", projectId: "my-location-app-6812a", storageBucket: "my-location-app-6812a.firebasestorage.app", messagingSenderId: "123347808605", appId: "1:123347808605:web:bd806f38a25e5c9d0638b4" };
+    const firebaseConfig = {
+        apiKey: "AIzaSyBUuwShytyJQcmTY0GohqiRa8-EinFCmqY",
+        authDomain: "my-location-app-6812a.firebaseapp.com",
+        projectId: "my-location-app-6812a",
+        storageBucket: "my-location-app-6812a.firebasestorage.app",
+        messagingSenderId: "123347808605",
+        appId: "1:123347808605:web:bd806f38a25e5c9d0638b4"
+    };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    let myId = localStorage.getItem('dashi_device_id') || ("admin_" + Math.random().toString(36).substring(2, 12));
-    localStorage.setItem('dashi_device_id', myId);
+    // --- 【修正】ドキュメントIDを端末ごとに固定 ---
+    let myId = localStorage.getItem('dashi_device_id');
+    if (!myId) {
+        myId = "admin_" + Math.random().toString(36).substring(2, 12);
+        localStorage.setItem('dashi_device_id', myId);
+    }
 
     let myName = "", isAutoFollow = true, isCoPerforming = false, backgroundTimer = null;
-    let map, myMarker, updateInterval, watchdogInterval, isFirstFixDone = false, lastSuccessTime = Date.now();
+    let map, myMarker, updateInterval, lastSuccessTime = Date.now();
     const otherMarkers = {}, lastUpdateOthers = {};
 
-    window.onload = () => { const n = localStorage.getItem('dashi_name'); if (n) document.getElementById('admin-name').value = n; };
+    window.onload = () => {
+        const n = localStorage.getItem('dashi_name');
+        if (n) document.getElementById('admin-name').value = n;
+    };
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            backgroundTimer = setTimeout(() => stopAdmin(false), 13000);
+        } else {
+            if (backgroundTimer) clearTimeout(backgroundTimer);
+        }
+    });
+
+    setInterval(async () => {
+        const now = Date.now();
+        if (myName && (now - lastSuccessTime > 13000)) stopAdmin(false);
+        for (let id in lastUpdateOthers) {
+            if (now - lastUpdateOthers[id] > 13000) {
+                try { await db.collection("locations").doc(id).delete(); } catch(e){}
+                if (otherMarkers[id]) map.removeLayer(otherMarkers[id]);
+                delete otherMarkers[id]; delete lastUpdateOthers[id];
+            }
+        }
+    }, 2000);
 
     function startAdmin() {
         myName = document.getElementById('admin-name').value.trim();
         if (!myName) return alert("名前を入力してください");
         localStorage.setItem('dashi_name', myName);
-        document.getElementById('start-msg').innerText = "GPS信号を探しています...";
-        document.getElementById('start-button').disabled = true;
-
-        navigator.geolocation.getCurrentPosition((pos) => {
-            isFirstFixDone = true; lastSuccessTime = Date.now();
-            document.getElementById('login-container').style.display = 'none';
-            document.getElementById('admin-display').style.display = 'block';
-            document.getElementById('active-name').innerText = "自山車: " + myName;
-            initMap(); startWatchdog();
-        }, (err) => {
-            document.getElementById('start-button').disabled = false;
-            document.getElementById('start-msg').innerText = "エラー: GPSを取得できませんでした";
-        }, { enableHighAccuracy: true, timeout: 15000 });
-    }
-
-    function startWatchdog() {
-        watchdogInterval = setInterval(async () => {
-            const now = Date.now();
-            if (now - lastSuccessTime > (isFirstFixDone ? 13000 : 30000)) stopAdmin(false);
-            for (let id in lastUpdateOthers) {
-                if (now - lastUpdateOthers[id] > 13000) {
-                    try { await db.collection("locations").doc(id).delete(); } catch(e){}
-                    if (otherMarkers[id]) map.removeLayer(otherMarkers[id]);
-                    delete otherMarkers[id]; delete lastUpdateOthers[id];
-                }
-            }
-        }, 2000);
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('admin-display').style.display = 'block';
+        document.getElementById('active-name').innerText = "自山車: " + myName;
+        initMap();
     }
 
     async function stopAdmin(withConfirm) {
         if (withConfirm && !confirm("終了しますか？")) return;
-        clearInterval(updateInterval); clearInterval(watchdogInterval);
+        clearInterval(updateInterval);
         try { await db.collection("locations").doc(myId).delete(); } catch (e) {}
         location.reload();
     }
@@ -123,23 +144,31 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
         db.collection("locations").onSnapshot(snapshot => {
+            let nearby = false;
             snapshot.docChanges().forEach(change => {
                 const data = change.doc.data(), id = change.doc.id;
                 if (id === myId || !data) return;
+                if (change.type === "removed") {
+                    if (otherMarkers[id]) map.removeLayer(otherMarkers[id]);
+                    delete otherMarkers[id]; delete lastUpdateOthers[id];
+                    return;
+                }
+                const pos = [data.lat, data.lng];
                 lastUpdateOthers[id] = Date.now();
-                const isPerforming = (data.status === "ON");
-                const labelContent = isPerforming ? `🥁${data.name} 共演中🥁` : data.name;
-                const labelClass = isPerforming ? "other-label performing-label" : "other-label";
+
+                if (myMarker && myMarker.getLatLng().distanceTo(L.latLng(pos)) < 20) nearby = true;
 
                 if (!otherMarkers[id]) {
-                    // offset:[0,0] を削除
-                    otherMarkers[id] = L.marker([data.lat, data.lng]).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+                    otherMarkers[id] = L.marker(pos).addTo(map).bindTooltip(data.name, { 
+                        permanent: true, direction: 'top', className: 'other-label', offset: [0, 0] 
+                    });
                 } else {
-                    // offset:[0,0] を削除
-                    otherMarkers[id].setLatLng([data.lat, data.lng]).unbindTooltip().bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+                    otherMarkers[id].setLatLng(pos);
                 }
             });
+            document.getElementById('coperform-ask').style.display = (nearby && !isCoPerforming) ? 'block' : 'none';
         });
+
         sendLocation();
         updateInterval = setInterval(sendLocation, 5000);
     }
@@ -147,23 +176,39 @@
     function sendLocation() {
         navigator.geolocation.getCurrentPosition((pos) => {
             const lat = pos.coords.latitude, lng = pos.coords.longitude;
-            lastSuccessTime = Date.now(); isFirstFixDone = true;
-            db.collection("locations").doc(myId).set({ lat, lng, name: myName, status: isCoPerforming ? "ON" : "", timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+            document.getElementById('mon-lat').innerText = lat.toFixed(5);
+            document.getElementById('mon-lng').innerText = lng.toFixed(5);
+            document.getElementById('mon-acc').innerText = `±${Math.round(pos.coords.accuracy)}m`;
+            document.getElementById('mon-time').innerText = new Date().toLocaleTimeString('ja-JP', {hour12: false});
+
+            db.collection("locations").doc(myId).set({ 
+                lat, lng, name: myName, status: isCoPerforming ? "ON" : "", 
+                timestamp: firebase.firestore.FieldValue.serverTimestamp() 
+            }).then(() => { lastSuccessTime = Date.now(); });
+
             if (isAutoFollow) map.panTo([lat, lng]);
-            const labelContent = isCoPerforming ? `🥁${myName} 共演中🥁` : myName;
-            const labelClass = isCoPerforming ? "admin-label performing-label" : "admin-label";
             if (!myMarker) {
-                // offset:[0,0] を削除
-                myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+                myMarker = L.marker([lat, lng]).addTo(map).bindTooltip(myName, { 
+                    permanent: true, direction: 'top', className: 'admin-label', offset: [0, 0] 
+                });
             } else {
-                // offset:[0,0] を削除
-                myMarker.setLatLng([lat, lng]).unbindTooltip().bindTooltip(labelContent, { permanent: true, direction: 'top', className: labelClass });
+                myMarker.setLatLng([lat, lng]);
             }
-        }, null, { enableHighAccuracy: true, timeout: 10000 });
+        }, null, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
 
-    function setCoPerformance(status) { isCoPerforming = status; document.getElementById('coperform-status').style.display = status ? 'block' : 'none'; sendLocation(); }
-    function toggleAutoFollow() { isAutoFollow = !isAutoFollow; document.getElementById('follow-btn').innerText = "自追跡:" + (isAutoFollow ? "ON" : "OFF"); document.getElementById('follow-btn').className = "follow-toggle " + (isAutoFollow ? "active" : ""); }
+    function setCoPerformance(status) {
+        isCoPerforming = status;
+        document.getElementById('coperform-ask').style.display = 'none';
+        document.getElementById('coperform-status').style.display = status ? 'block' : 'none';
+        sendLocation();
+    }
+
+    function toggleAutoFollow() {
+        isAutoFollow = !isAutoFollow;
+        document.getElementById('follow-btn').innerText = "自追跡:" + (isAutoFollow ? "ON" : "OFF");
+        document.getElementById('follow-btn').className = "follow-toggle " + (isAutoFollow ? "active" : "");
+    }
     </script>
 </body>
 </html>
